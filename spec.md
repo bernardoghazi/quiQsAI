@@ -34,8 +34,9 @@ Desktop (macOS, Linux, Windows), web (browser), Android, iOS.
 ### Data model — a Q
 
 - `id` — stable UUID
-- `text` — typed or transcribed content (optional if audio present)
-- `audio` — recorded audio blob (optional)
+- `text` — typed or transcribed content (optional if `contentAudio` present)
+- `contentAudio` — audio the user dictated as the Q's content (optional)
+- `creationPromptAudio` — audio of the voice prompt that created or edited the Q, retained for provenance and recovery if STT or the LLM misinterpreted intent (optional; not retained for query / delete prompts)
 - `tags` — zero or more labels (e.g. `work`, `medical`, `family`)
 - `alarms` — zero or more, each one of:
     - **one-off time** — a single timestamp
@@ -46,7 +47,9 @@ Desktop (macOS, Linux, Windows), web (browser), Android, iOS.
 
 ### Features
 
-- **Create** — typed text, recorded audio, or voice prompt interpreted by the LLM. Audio-captured Qs keep the audio *and* run STT to populate `text`.
+- **Create** — typed text, recorded audio, or voice prompt interpreted by the LLM.
+    - *Audio-captured Qs* (user dictates content into a Q) keep the audio *and* run STT to populate `text`.
+    - *Voice-prompted Qs* (user talks to the LLM to create or edit) attach the prompt audio to the resulting Q as a creation-provenance artifact, so the user can replay what they actually said if STT or the LLM misinterprets intent. Prompt audio for **query** and **delete** commands is not retained.
 - **Edit / delete** — tapping a Q anywhere opens full detail with edit and delete actions.
 - **Views** — list view and calendar view, both filterable by tag.
 - **Query** — ask the LLM questions about existing Qs (*"any medical Qs this week?"*).
@@ -57,6 +60,7 @@ Desktop (macOS, Linux, Windows), web (browser), Android, iOS.
 - Runs **locally** on-device; Gemma variant TBD (see open questions).
 - The model file is **not bundled** with the app — downloaded on first run (or user-provided) and stored outside the app bundle.
 - The LLM turns user prompts into structured commands (create / update / delete / query) which the app executes against the local Q store.
+- If the chosen Gemma is natively multimodal (audio-in), the prompt audio feeds the model directly and there is no discrete STT step; the provenance concern shifts from *"STT got it wrong"* to *"model misinterpreted"*, but retaining create/edit prompt audio is still useful for user recovery and debugging.
 
 ---
 
