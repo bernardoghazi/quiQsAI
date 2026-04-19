@@ -1,0 +1,102 @@
+package com.quiqs.client.ui
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import com.quiqs.shared.Q
+import com.quiqs.shared.QRepository
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.launch
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalUuidApi::class)
+@Composable
+fun QDetailScreen(
+    repository: QRepository,
+    qId: Uuid?,
+    onBack: () -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    val flow: Flow<Q?> = remember(qId) {
+        if (qId != null) repository.observeById(qId) else flowOf(null)
+    }
+    val existing by flow.collectAsState(initial = null)
+
+    var text by remember(qId) { mutableStateOf("") }
+    var initialized by remember(qId) { mutableStateOf(qId == null) }
+    LaunchedEffect(existing) {
+        val loaded = existing
+        if (!initialized && loaded != null) {
+            text = loaded.text
+            initialized = true
+        }
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text(if (qId == null) "New Q" else "Edit Q") },
+                navigationIcon = {
+                    TextButton(onClick = onBack) { Text("Back") }
+                },
+            )
+        },
+    ) { padding ->
+        Column(
+            modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            TextField(
+                value = text,
+                onValueChange = { text = it },
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = { Text("What would you like to be reminded of?") },
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = {
+                        val trimmed = text.trim()
+                        scope.launch {
+                            if (qId == null) repository.create(trimmed)
+                            else repository.update(qId, trimmed)
+                            onBack()
+                        }
+                    },
+                    enabled = text.trim().isNotEmpty(),
+                ) { Text("Save") }
+
+                if (qId != null) {
+                    OutlinedButton(onClick = {
+                        scope.launch {
+                            repository.delete(qId)
+                            onBack()
+                        }
+                    }) { Text("Delete") }
+                }
+            }
+        }
+    }
+}

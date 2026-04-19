@@ -1,10 +1,13 @@
 package com.quiqs.shared
 
-import kotlinx.serialization.Serializable
+import kotlinx.datetime.Instant
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 
-@Serializable
+@OptIn(ExperimentalUuidApi::class)
 data class Q(
-    val id: String,
+    val id: Uuid,
     val text: String,
-    val tags: List<String> = emptyList(),
+    val createdAt: Instant,
+    val updatedAt: Instant,
 )

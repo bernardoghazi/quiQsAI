@@ -1,18 +1,30 @@
 package com.quiqs.client
 
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import com.quiqs.client.ui.QDetailScreen
+import com.quiqs.client.ui.QListScreen
+import com.quiqs.shared.QRepository
 
 @Composable
-fun App() {
+fun App(repository: QRepository) {
+    var route by remember { mutableStateOf<Route>(Route.List) }
     MaterialTheme {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("quiQs")
+        when (val current = route) {
+            is Route.List -> QListScreen(
+                repository = repository,
+                onNewQ = { route = Route.Detail(id = null) },
+                onOpenQ = { id -> route = Route.Detail(id = id) },
+            )
+            is Route.Detail -> QDetailScreen(
+                repository = repository,
+                qId = current.id,
+                onBack = { route = Route.List },
+            )
         }
     }
 }
