@@ -36,7 +36,8 @@ Desktop (macOS, Linux, Windows), web (browser), Android, iOS.
 - `id` — stable UUID
 - `text` — typed or transcribed content (optional if `contentAudio` present)
 - `contentAudio` — audio the user dictated as the Q's content (optional)
-- `creationPromptAudio` — audio of the voice prompt that created or edited the Q, retained for provenance and recovery if STT or the LLM misinterpreted intent (optional; not retained for query / delete prompts)
+- `creationPromptAudio` — audio of the voice prompt that created or edited the Q, retained for provenance and recovery if STT or the LLM
+  misinterpreted intent (optional; not retained for query / delete prompts)
 - `tags` — zero or more labels (e.g. `work`, `medical`, `family`)
 - `alarms` — zero or more, each one of:
     - **one-off time** — a single timestamp
@@ -49,7 +50,9 @@ Desktop (macOS, Linux, Windows), web (browser), Android, iOS.
 
 - **Create** — typed text, recorded audio, or voice prompt interpreted by the LLM.
     - *Audio-captured Qs* (user dictates content into a Q) keep the audio *and* run STT to populate `text`.
-    - *Voice-prompted Qs* (user talks to the LLM to create or edit) attach the prompt audio to the resulting Q as a creation-provenance artifact, so the user can replay what they actually said if STT or the LLM misinterprets intent. Prompt audio for **query** and **delete** commands is not retained.
+    - *Voice-prompted Qs* (user talks to the LLM to create or edit) attach the prompt audio to the resulting Q as a creation-provenance artifact, so
+      the user can replay what they actually said if STT or the LLM misinterprets intent. Prompt audio for **query** and **delete** commands is not
+      retained.
 - **Edit / delete** — tapping a Q anywhere opens full detail with edit and delete actions.
 - **Views** — list view and calendar view, both filterable by tag.
 - **Query** — ask the LLM questions about existing Qs (*"any medical Qs this week?"*).
@@ -60,7 +63,9 @@ Desktop (macOS, Linux, Windows), web (browser), Android, iOS.
 - Runs **locally** on-device; Gemma variant TBD (see open questions).
 - The model file is **not bundled** with the app — downloaded on first run (or user-provided) and stored outside the app bundle.
 - The LLM turns user prompts into structured commands (create / update / delete / query) which the app executes against the local Q store.
-- If the chosen Gemma is natively multimodal (audio-in), the prompt audio feeds the model directly and there is no discrete STT step; the provenance concern shifts from *"STT got it wrong"* to *"model misinterpreted"*, but retaining create/edit prompt audio is still useful for user recovery and debugging.
+- If the chosen Gemma is natively multimodal (audio-in), the prompt audio feeds the model directly and there is no discrete STT step; the provenance
+  concern shifts from *"STT got it wrong"* to *"model misinterpreted"*, but retaining create/edit prompt audio is still useful for user recovery and
+  debugging.
 
 ---
 
@@ -116,39 +121,43 @@ Create, list, edit, delete text-only Qs with no alarms. Local persistence (SQLDe
 LLM, no audio.
 **Exit:** create a Q, kill the app, reopen, it's still there.
 
-### Phase 2 — Time alarms
+### Phase 2 — LLM integration (typed prompts)
+
+Earliest feasibility check — validates the single biggest unknown: *can a Gemma variant actually run on target devices and produce useful structured
+output?* Resolve the *Gemma variant*, *model delivery*, and *LLM-to-app bridge* open questions. Wire typed natural-language prompts → structured
+commands → local Q operations (create, edit, delete, query). Audio prompts deferred to Phase 3.
+**Exit:** a typed prompt like *"remind me to call the doctor tomorrow at noon"* creates a correctly-populated Q; *"any medical Qs tomorrow?"* returns
+the right answer.
+
+### Phase 3 — Audio + STT
+
+Record `contentAudio` for Qs dictated by the user; record and retain `creationPromptAudio` for LLM create/edit prompts. Populate `text` via STT, or
+via the multimodal LLM directly if the chosen Gemma is audio-native.
+**Exit:** record a voice note → transcript appears in the Q → audio plays back; spoken prompt to the LLM creates a Q end-to-end.
+
+### Phase 4 — Time alarms
 
 One-off and recurring time alarms. Platform alarm dispatch (AlarmManager on Android). Notification on fire.
 **Exit:** alarm fires at the scheduled time with the app closed.
 
-### Phase 3 — Second-platform validation (desktop)
+### Phase 5 — Second-platform validation (desktop)
 
-Bring up Phase 1 + 2 on desktop. Proves the `shared/` abstractions hold; divergence should live only in platform-specific source sets. Desktop
-alarms = foreground notifications for v1.
+Bring up Phases 1–4 on desktop. Proves the `shared/` abstractions hold; divergence should live only in platform-specific source sets. Desktop alarms =
+foreground notifications for v1.
 **Exit:** feature parity between Android and desktop.
 
-### Phase 4 — Server + sync
-
-Resolve auth + sync-strategy open questions. Implement `/qs` CRUD. Client-side sync engine. Validate two-device concurrent edits.
-**Exit:** create a Q on Android, open desktop, it's there; edit on desktop, it updates on Android after sync.
-
-### Phase 5 — Audio + STT
-
-Record audio inside a Q; run speech-to-text to populate `text`. Upload audio blobs to server. Decide STT engine (on-device library vs. LLM).
-**Exit:** record a voice note → transcript appears in the Q → audio plays back after a sync round-trip.
-
-### Phase 6 — LLM integration
-
-Model download / configuration flow. Wire natural-language prompts → structured commands → local Q operations. Query, create, edit, and delete via
-prompt.
-**Exit:** operate the app end-to-end using only voice or typed prompts.
-
-### Phase 7 — Geolocation alarms
+### Phase 6 — Geolocation alarms
 
 Geofence definition UI (map picker). Platform geofence APIs. One-off and active-until modes.
 **Exit:** alarm fires on entering a geofence with the app backgrounded.
 
-### Phase 8 — Remaining platforms + polish
+### Phase 7 — Remaining platforms + polish
 
 iOS, web (wasmJs). Calendar view. Tag filtering UI. Auto-tagging (if chosen). Accessibility pass.
 **Exit:** feature parity across all targets listed in *Client ▸ Targets*.
+
+### Phase 8 — Server + sync
+
+Resolve auth and sync-strategy open questions. Implement `/qs` CRUD + audio blob storage. Client-side sync engine. Validate two-device concurrent
+edits.
+**Exit:** create a Q on one device, open another, it's there; edit on either side and both converge after sync.
