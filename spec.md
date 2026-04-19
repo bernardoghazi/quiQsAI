@@ -1,75 +1,150 @@
 # quiQs
 
-------------------
+A multi-platform reminder app. Users create **Qs** (as in *cues*) that alert them at a time, on a schedule, or when they enter a location. A Q can
+contain text, audio, or both, and is created either through the UI or via natural-language voice prompts interpreted by a local Gemma LLM.
+A backend syncs Qs across the user's devices.
 
-# Overview
+Sharing Qs between users (family, team) is out of scope for v1 and will be specified later.
 
-Plan, design, and create a client application for the user to create reminders (or Qs, as in 'cues') that will alert the user at specific times or
-locations. The app will be called quiQs.
+## Goals
 
-The app should use one of the gemma 4 local LLMs: the user should be able to talk to the app using natural language to create Qs (e.g.: "Remember
-me to call the doctor's office tomorrow at noon to schedule an appointment"), to edit an existing Q (e.g.: "do you know the Q set to tomorrow
-about the doctor's appointment? Change it o Tuesday, 6pm"), to delete a Q, and to ask questions about the existing Qs, such as "are there any
-work-related Qs set for tomorrow?".
+- Fast, offline-first Q capture on any user device.
+- Natural-language interaction via a **locally-run** LLM — user data doesn't leave the device for LLM calls.
+- Flexible alarms: single, recurring, and geofence.
+- Cross-device sync via a user account.
 
-Also, plan, design, and create a server application that would allow the user to sync Qs between different client platforms the app will target.
+## Non-goals (v1)
 
-Eventually, we'll implement sharing Qs between users (friends and family member, work team members, etc.), but that'll be discussed on a next phase.
+- Sharing Qs between users.
+
+---
 
 ## Client application
 
 ### Targets
 
-- Desktop (mac, linux, windows), web (browser), android, and iOS.
+Desktop (macOS, Linux, Windows), web (browser), Android, iOS.
 
 ### Tech
 
 - Kotlin Multiplatform (KMP)
-- only use libraries that are KMP ready for all targeted platforms.
 - Compose Multiplatform (CMP)
+- Only KMP-ready libraries across all targets.
 
-### Features of a Q
+### Data model — a Q
 
-- user may type text and/or record audio into a Q, or create it via voice (through the LLM). If the user records audio or creates it via voice, the Q
-  should keep the audio, and also use speech-to-text to add the text to the Q.
-- a Q can have a single scheduled alarm (e.g. "10/04/2026 at 21:30"), multiple single alarms, re-occurring alarms (e.g. "every Tuesday at 21:30 until
-  10/12/2027), or no alarm at all.
-- a Q can have a geolocation area that triggers an alarm. It can be a one-off alarm, or it can be set to always trigger the alarm until a date/time.
-- a Q may have one tag, more than onetag , or no tags. E.g.: "work", "medical", "family". Qs should be filterable by tags.
+- `id` — stable UUID
+- `text` — typed or transcribed content (optional if audio present)
+- `audio` — recorded audio blob (optional)
+- `tags` — zero or more labels (e.g. `work`, `medical`, `family`)
+- `alarms` — zero or more, each one of:
+    - **one-off time** — a single timestamp
+    - **recurring time** — rule + end date (e.g. *every Tuesday 21:30 until 2027-12-10*)
+    - **geofence** — lat/lng + radius; one-off *or* active-until a timestamp
+- `createdAt`, `updatedAt`
+- `syncState` — local-only / dirty / synced (client-side bookkeeping)
 
 ### Features
 
-Besides creating a Q, the user should be able to:
+- **Create** — typed text, recorded audio, or voice prompt interpreted by the LLM. Audio-captured Qs keep the audio *and* run STT to populate `text`.
+- **Edit / delete** — tapping a Q anywhere opens full detail with edit and delete actions.
+- **Views** — list view and calendar view, both filterable by tag.
+- **Query** — ask the LLM questions about existing Qs (*"any medical Qs this week?"*).
+- **Sync** — push local changes and pull remote changes from the server.
 
-- Edit Qs
-    - Clicking on a Q anywhere in the app should show the full details of the Q, and allow the user to edit and to delete it.
-- See and manage Qs in a calendar view, and in a list view.
-- Query Qs via voice, as mentioned in Overview.
-- Sync Qs with the backend/server app.
+### LLM
 
-### About the LLM
+- Runs **locally** on-device; Gemma variant TBD (see open questions).
+- The model file is **not bundled** with the app — downloaded on first run (or user-provided) and stored outside the app bundle.
+- The LLM turns user prompts into structured commands (create / update / delete / query) which the app executes against the local Q store.
 
-- The model file should not be part of the application: it should be downloaded and stored separately.
+---
 
 ## Server application
 
 ### Features
 
-- authentication and authorization
-- sync between platforms: create, edit, delete Qs.
+- User authentication and authorization.
+- Q sync: create, update, delete, conflict resolution.
+- Audio blob storage linked to Qs.
 
 ### Tech
 
-- Ktor.
+- Ktor (Netty).
+- Auth mechanism, datastore, and sync strategy — TBD (see open questions).
 
-## Topics for discussion
+### Sync sketch
 
-- which of the gemma 4 models should we use? It should work well in phones. It should support audio.
-- How can the client and server apps best share models and functions?
-- What's the auth technology that the server should use? JWT? Regular tokens?
-- What's the best approach for syncing Qs? The user may create a Q in one platform, sync it, edit in another platform, sync it again, etc.
-- What db should the server use? It should be able to store audio (voice content) and text.
-- Can the user download the model themselves, and point the app to it?
-- Should the LLM add tags to Qs automatically, or should the user add it themselves?
-- How will the LLM act on the Q from a prompt? I mean, how will it create a Q by itself, or edit or delete a Q? How will the application code support
-  that?
+- Each Q carries `updatedAt`; each device tracks a per-user sync cursor.
+- Conflict resolution strategy to be decided (last-writer-wins vs. something richer).
+- Audio uploaded separately from Q metadata (multipart or pre-signed URL).
+
+---
+
+## Open questions
+
+- **Gemma variant** — which model runs well on phones *and* supports audio? Tradeoffs: size, latency, audio support, license.
+- **Shared code** — data classes and validation in `shared/` are obvious; does any sync / business logic belong there too, or does the server use it
+  only for types?
+- **Auth** — JWT vs. opaque tokens. Session duration, refresh flow, revocation.
+- **Sync strategy** — last-writer-wins, CRDT, or operational log? How do we handle *created-offline-on-A + edited-on-B before A syncs*?
+- **Database** — Postgres + object storage (S3-compatible) for audio? Or embedded (SQLite) for v1 simplicity?
+- **Model delivery** — app-managed first-run download, or user-provided path? If download: from where, under what license, size budget?
+- **Tagging** — LLM auto-tags, user-tags, or both? If auto, how is it corrected?
+- **LLM-to-app bridge** — how does LLM output drive real CRUD? Structured JSON tool calls, a DSL, function calling via a local runtime (MediaPipe /
+  llama.cpp / etc.)?
+
+---
+
+## Implementation phases
+
+Each phase delivers something testable end-to-end. Revisit this spec at each phase boundary — decisions in *Open questions* get resolved as they
+become blocking.
+
+### Phase 0 — Scaffolding *(done)*
+
+Monorepo with `shared/`, `client/`, `server/` Gradle modules. Compose Multiplatform shell. Ktor `/health` endpoint.
+**Exit:** project builds on at least one client platform; server answers `/health`.
+
+### Phase 1 — Local Q MVP (Android only)
+
+Create, list, edit, delete text-only Qs with no alarms. Local persistence (SQLDelight or equivalent KMP store). List + detail screens. No sync, no
+LLM, no audio.
+**Exit:** create a Q, kill the app, reopen, it's still there.
+
+### Phase 2 — Time alarms
+
+One-off and recurring time alarms. Platform alarm dispatch (AlarmManager on Android). Notification on fire.
+**Exit:** alarm fires at the scheduled time with the app closed.
+
+### Phase 3 — Second-platform validation (desktop)
+
+Bring up Phase 1 + 2 on desktop. Proves the `shared/` abstractions hold; divergence should live only in platform-specific source sets. Desktop
+alarms = foreground notifications for v1.
+**Exit:** feature parity between Android and desktop.
+
+### Phase 4 — Server + sync
+
+Resolve auth + sync-strategy open questions. Implement `/qs` CRUD. Client-side sync engine. Validate two-device concurrent edits.
+**Exit:** create a Q on Android, open desktop, it's there; edit on desktop, it updates on Android after sync.
+
+### Phase 5 — Audio + STT
+
+Record audio inside a Q; run speech-to-text to populate `text`. Upload audio blobs to server. Decide STT engine (on-device library vs. LLM).
+**Exit:** record a voice note → transcript appears in the Q → audio plays back after a sync round-trip.
+
+### Phase 6 — LLM integration
+
+Model download / configuration flow. Wire natural-language prompts → structured commands → local Q operations. Query, create, edit, and delete via
+prompt.
+**Exit:** operate the app end-to-end using only voice or typed prompts.
+
+### Phase 7 — Geolocation alarms
+
+Geofence definition UI (map picker). Platform geofence APIs. One-off and active-until modes.
+**Exit:** alarm fires on entering a geofence with the app backgrounded.
+
+### Phase 8 — Remaining platforms + polish
+
+iOS, web (wasmJs). Calendar view. Tag filtering UI. Auto-tagging (if chosen). Accessibility pass.
+**Exit:** feature parity across all targets listed in *Client ▸ Targets*.
