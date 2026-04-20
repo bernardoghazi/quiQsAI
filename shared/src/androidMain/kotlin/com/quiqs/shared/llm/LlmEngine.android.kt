@@ -15,8 +15,9 @@ private class LiteRtLmEngine(modelPath: String, cacheDir: String?) : LlmEngine {
     private val engine: Engine = Engine(
         EngineConfig(
             modelPath = modelPath,
-            backend = Backend.CPU(numOfThreads = Runtime.getRuntime().availableProcessors()),
+            backend = Backend.CPU(),
             audioBackend = Backend.CPU(),
+            maxNumTokens = 1024,
             cacheDir = cacheDir,
         ),
     ).also { it.initialize() }
