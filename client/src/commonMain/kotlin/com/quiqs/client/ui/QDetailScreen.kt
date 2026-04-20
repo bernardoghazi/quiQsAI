@@ -23,12 +23,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.quiqs.shared.Alarm
 import com.quiqs.shared.Q
 import com.quiqs.shared.QRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toLocalDateTime
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
@@ -97,6 +101,28 @@ fun QDetailScreen(
                     }) { Text("Delete") }
                 }
             }
+
+            existing?.let { q ->
+                if (q.alarms.isNotEmpty()) {
+                    Text("Alarms", fontWeight = FontWeight.SemiBold)
+                    q.alarms.forEach { Text("• ${it.describe()}") }
+                }
+                Text("Created: ${q.createdAt.toLocalDisplay()}")
+                Text("Updated: ${q.updatedAt.toLocalDisplay()}")
+            }
         }
     }
 }
+
+private fun Alarm.describe(): String = when (this) {
+    is Alarm.OneOffTime -> "One-off @ ${at.toLocalDisplay()} (raw: $at)"
+    is Alarm.RecurringTime -> "Recurring: $rule" + (until?.let { ", until ${it.toLocalDisplay()}" } ?: "")
+    is Alarm.Geofence -> "Geofence ${latitude}, ${longitude} (${radiusMeters}m)"
+}
+
+private fun kotlinx.datetime.Instant.toLocalDisplay(): String {
+    val local = toLocalDateTime(TimeZone.currentSystemDefault())
+    return "${local.date} ${local.hour.pad()}:${local.minute.pad()}"
+}
+
+private fun Int.pad(): String = toString().padStart(2, '0')

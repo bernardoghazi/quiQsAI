@@ -7,4 +7,5 @@ import kotlin.uuid.Uuid
 sealed interface Route {
     data object List : Route
     data class Detail(val id: Uuid?) : Route
+    data object Prompt : Route
 }

@@ -1,6 +1,6 @@
 [versions]
-kotlin = "2.1.20"
-compose = "1.7.3"
+kotlin = "2.2.21"
+compose = "1.10.3"
 agp = "8.7.3"
 ktor = "3.0.3"
 coroutines = "1.9.0"
@@ -9,6 +9,7 @@ logback = "1.5.12"
 androidx-activity = "1.9.3"
 sqldelight = "2.0.2"
 kotlinx-datetime = "0.6.1"
+litertlm = "0.10.2"
 compileSdk = "35"
 minSdk = "24"
 targetSdk = "35"
@@ -41,6 +42,9 @@ sqldelight-sqlite-driver = { module = "app.cash.sqldelight:sqlite-driver", versi
 sqldelight-native-driver = { module = "app.cash.sqldelight:native-driver", version.ref = "sqldelight" }
 
 kotlinx-datetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.ref = "kotlinx-datetime" }
+
+litertlm-android = { module = "com.google.ai.edge.litertlm:litertlm-android", version.ref = "litertlm" }
+litertlm-jvm = { module = "com.google.ai.edge.litertlm:litertlm-jvm", version.ref = "litertlm" }
 
 [plugins]
 kotlinMultiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }

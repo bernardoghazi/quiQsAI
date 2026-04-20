@@ -117,13 +117,21 @@ Create, list, edit, delete text-only Qs with no alarms. Local persistence (SQLDe
 LLM, no audio.
 **Exit:** create a Q, kill the app, reopen, it's still there.
 
-### Phase 2 — LLM integration (typed prompts)
+### Phase 2 — LLM integration (typed prompts) *(in progress)*
 
 Earliest feasibility check — validates the single biggest unknown: *can Gemma 4 run on an Android device and produce useful structured output?*
 
-- **Stack**: Gemma 4 E2B (instruction-tuned) via LiteRT-LM; model file pushed to device with `adb push`.
-- **Data model**: extend `Q` with `alarms: List<Alarm>` (sealed hierarchy defined in *Data model*). Alarms don't fire yet — that's Phase 4.
-- **Bridge**: Gemma 4 native function-calling → JSON tool call → validate + dispatch to `QRepository`. Schema + parser in `shared/commonMain`; LiteRT-LM binding under `client/` via `expect`/`actual`.
+- **Stack**: Gemma 4 E2B (instruction-tuned) via LiteRT-LM 0.10.2; model file pushed to device at `getExternalFilesDir(null)/gemma.litertlm` via `adb push`.
+- **Data model**: `Q` now carries `alarms: List<Alarm>` (sealed: `OneOffTime`, `RecurringTime`, `Geofence`). Alarms don't fire yet — that's Phase 4.
+- **Bridge**: JSON-in-text schema in `shared/commonMain/llm/`:
+  - `QCommand` sealed interface (`create` / `update` / `delete` / `answer`) + `Alarm` serializer share `"type"` discriminator.
+  - `LlmPromptBuilder` injects current instant, time zone, and the user's existing Qs as a `QSnapshot` list so the model resolves relative times and references existing ids.
+  - `LlmCommandParser` extracts the first balanced JSON object (tolerates code fences and stray prose) and decodes it.
+  - `QCommandDispatcher` executes the parsed command against `QRepository` and returns a human-readable result.
+  - `QAgent` glues engine → prompt → parser → dispatcher.
+- **Engine binding**: `LlmEngine` interface in `shared/commonMain`; `expect object LlmEngineFactory`. Android + JVM actuals wrap `com.google.ai.edge.litertlm.Engine` + `Conversation`. iOS actual is a stub until the Swift binding lands.
+- **Version bump**: LiteRT-LM 0.10.2 ships with Kotlin 2.3 metadata, so the project moved to Kotlin 2.2.21 / Compose Multiplatform 1.10.3 with `-Xskip-metadata-version-check` on the shared module.
+- **UI**: a minimal *Ask* screen in the client prompts the user, streams the LLM response, and shows the dispatched result + raw output.
 - Typed prompts only — audio prompts land in Phase 3.
 
 **Exit:** a typed prompt like *"remind me to call the doctor tomorrow at noon"* creates a correctly-populated Q (including a `OneOffTime` alarm); *"any medical Qs tomorrow?"* returns the right answer.

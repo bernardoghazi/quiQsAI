@@ -1,6 +1,8 @@
 CREATE TABLE QEntity (
     id TEXT NOT NULL PRIMARY KEY,
     text TEXT NOT NULL,
+    tagsJson TEXT NOT NULL DEFAULT '[]',
+    alarmsJson TEXT NOT NULL DEFAULT '[]',
     createdAt INTEGER NOT NULL,
     updatedAt INTEGER NOT NULL
 );
@@ -12,10 +14,10 @@ selectById:
 SELECT * FROM QEntity WHERE id = ?;
 
 insert:
-INSERT INTO QEntity(id, text, createdAt, updatedAt) VALUES (?, ?, ?, ?);
+INSERT INTO QEntity(id, text, tagsJson, alarmsJson, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?);
 
-updateText:
-UPDATE QEntity SET text = ?, updatedAt = ? WHERE id = ?;
+updateFields:
+UPDATE QEntity SET text = ?, tagsJson = ?, alarmsJson = ?, updatedAt = ? WHERE id = ?;
 
 deleteById:
 DELETE FROM QEntity WHERE id = ?;

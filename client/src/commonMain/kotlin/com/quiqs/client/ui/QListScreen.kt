@@ -12,6 +12,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -19,7 +20,10 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.sp
+import com.quiqs.shared.Alarm
 import com.quiqs.shared.QRepository
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toLocalDateTime
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
@@ -29,11 +33,19 @@ fun QListScreen(
     repository: QRepository,
     onNewQ: () -> Unit,
     onOpenQ: (Uuid) -> Unit,
+    onOpenPrompt: () -> Unit,
 ) {
     val qs by repository.observeAll().collectAsState(initial = emptyList())
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text("quiQs") }) },
+        topBar = {
+            TopAppBar(
+                title = { Text("quiQs") },
+                actions = {
+                    TextButton(onClick = onOpenPrompt) { Text("Ask") }
+                },
+            )
+        },
         floatingActionButton = {
             FloatingActionButton(onClick = onNewQ) { Text("+", fontSize = 24.sp) }
         },
@@ -50,6 +62,9 @@ fun QListScreen(
                 items(qs, key = { it.id.toString() }) { q ->
                     ListItem(
                         headlineContent = { Text(q.text) },
+                        supportingContent = q.alarms.firstOrNull()?.let { a ->
+                            { Text(a.shortLabel()) }
+                        },
                         modifier = Modifier.clickable { onOpenQ(q.id) },
                     )
                     HorizontalDivider()
@@ -57,4 +72,13 @@ fun QListScreen(
             }
         }
     }
+}
+
+private fun Alarm.shortLabel(): String = when (this) {
+    is Alarm.OneOffTime -> {
+        val local = at.toLocalDateTime(TimeZone.currentSystemDefault())
+        "At ${local.date} ${local.hour.toString().padStart(2, '0')}:${local.minute.toString().padStart(2, '0')}"
+    }
+    is Alarm.RecurringTime -> "Repeats: $rule"
+    is Alarm.Geofence -> "Near $latitude, $longitude"
 }

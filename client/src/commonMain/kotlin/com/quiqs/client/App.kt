@@ -8,10 +8,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import com.quiqs.client.ui.QDetailScreen
 import com.quiqs.client.ui.QListScreen
+import com.quiqs.client.ui.QPromptScreen
 import com.quiqs.shared.QRepository
 
 @Composable
-fun App(repository: QRepository) {
+fun App(repository: QRepository, agentProvider: AgentProvider = NoAgent) {
     var route by remember { mutableStateOf<Route>(Route.List) }
     MaterialTheme {
         when (val current = route) {
@@ -19,10 +20,15 @@ fun App(repository: QRepository) {
                 repository = repository,
                 onNewQ = { route = Route.Detail(id = null) },
                 onOpenQ = { id -> route = Route.Detail(id = id) },
+                onOpenPrompt = { route = Route.Prompt },
             )
             is Route.Detail -> QDetailScreen(
                 repository = repository,
                 qId = current.id,
+                onBack = { route = Route.List },
+            )
+            is Route.Prompt -> QPromptScreen(
+                agentProvider = agentProvider,
                 onBack = { route = Route.List },
             )
         }

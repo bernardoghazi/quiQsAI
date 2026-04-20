@@ -8,6 +8,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val repository = createQRepository(applicationContext)
-        setContent { App(repository) }
+        val agentProvider = createAgentProvider(applicationContext, repository)
+        setContent { App(repository, agentProvider) }
     }
 }
