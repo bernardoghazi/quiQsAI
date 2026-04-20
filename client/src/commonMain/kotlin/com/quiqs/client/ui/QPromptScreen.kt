@@ -2,6 +2,7 @@ package com.quiqs.client.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -11,6 +12,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -27,30 +29,62 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import com.quiqs.client.AgentProvider
 import com.quiqs.client.AgentStatus
+import com.quiqs.client.audio.AudioRecorder
+import com.quiqs.client.audio.RecorderProvider
+import com.quiqs.client.audio.RecorderStatus
 import com.quiqs.shared.llm.QAgent
 import com.quiqs.shared.llm.QAgentOutcome
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun QPromptScreen(agentProvider: AgentProvider, onBack: () -> Unit) {
+fun QPromptScreen(
+    agentProvider: AgentProvider,
+    recorderProvider: RecorderProvider,
+    onBack: () -> Unit,
+) {
     var agent by remember { mutableStateOf<QAgent?>(null) }
     var agentError by remember { mutableStateOf<String?>(null) }
     var prompt by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
+    var recording by remember { mutableStateOf(false) }
+    var recorderError by remember { mutableStateOf<String?>(null) }
+    var activeRecorder by remember { mutableStateOf<AudioRecorder?>(null) }
     var status by remember { mutableStateOf<String?>(null) }
     var rawOutput by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(agentProvider) {
         try {
-            when (val status = agentProvider.get()) {
-                is AgentStatus.Available -> agent = status.agent
-                is AgentStatus.Unavailable -> agentError = status.reason
+            when (val result = agentProvider.get()) {
+                is AgentStatus.Available -> agent = result.agent
+                is AgentStatus.Unavailable -> agentError = result.reason
             }
         } catch (t: Throwable) {
             agentError = t.message ?: t::class.simpleName ?: "Failed to initialize LLM"
         }
+    }
+
+    suspend fun runOutcome(block: suspend QAgent.() -> QAgentOutcome) {
+        val a = agent ?: return
+        busy = true
+        status = null
+        rawOutput = null
+        runCatching { a.block() }
+            .onSuccess { outcome ->
+                when (outcome) {
+                    is QAgentOutcome.Handled -> {
+                        status = outcome.result.message
+                        rawOutput = outcome.raw
+                    }
+                    is QAgentOutcome.ParseFailed -> {
+                        status = "Couldn't parse LLM output: ${outcome.reason}"
+                        rawOutput = outcome.raw
+                    }
+                }
+            }
+            .onFailure { status = "Error: ${it.message ?: it::class.simpleName}" }
+        busy = false
     }
 
     Scaffold(
@@ -81,34 +115,56 @@ fun QPromptScreen(agentProvider: AgentProvider, onBack: () -> Unit) {
                         label = { Text("What do you want?") },
                         modifier = Modifier.fillMaxWidth(),
                     )
-                    Button(
-                        enabled = !busy && prompt.isNotBlank(),
-                        onClick = {
-                            val a = agent ?: return@Button
-                            val p = prompt
-                            busy = true
-                            status = null
-                            rawOutput = null
-                            scope.launch {
-                                runCatching { a.handle(p) }
-                                    .onSuccess { outcome ->
-                                        when (outcome) {
-                                            is QAgentOutcome.Handled -> {
-                                                status = outcome.result.message
-                                                rawOutput = outcome.raw
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(
+                            enabled = !busy && !recording && prompt.isNotBlank(),
+                            onClick = {
+                                val p = prompt
+                                scope.launch { runOutcome { handle(p) } }
+                            },
+                        ) { Text(if (busy) "Thinking…" else "Send") }
+
+                        OutlinedButton(
+                            enabled = !busy,
+                            onClick = {
+                                if (!recording) {
+                                    scope.launch {
+                                        recorderError = null
+                                        when (val r = recorderProvider.get()) {
+                                            is RecorderStatus.Available -> {
+                                                activeRecorder = r.recorder
+                                                runCatching { r.recorder.start() }
+                                                    .onSuccess { recording = true }
+                                                    .onFailure {
+                                                        recorderError = it.message ?: "Failed to start recorder"
+                                                        activeRecorder = null
+                                                    }
                                             }
-                                            is QAgentOutcome.ParseFailed -> {
-                                                status = "Couldn't parse LLM output: ${outcome.reason}"
-                                                rawOutput = outcome.raw
-                                            }
+                                            is RecorderStatus.PermissionRequired ->
+                                                recorderError = "Microphone permission denied."
+                                            is RecorderStatus.Unavailable ->
+                                                recorderError = r.reason
                                         }
                                     }
-                                    .onFailure { status = "Error: ${it.message ?: it::class.simpleName}" }
-                                busy = false
-                            }
-                        },
-                    ) { Text(if (busy) "Thinking…" else "Send") }
+                                } else {
+                                    val rec = activeRecorder ?: return@OutlinedButton
+                                    scope.launch {
+                                        val path = runCatching { rec.stop() }.getOrElse { err ->
+                                            recording = false
+                                            activeRecorder = null
+                                            recorderError = err.message ?: "Failed to stop recorder"
+                                            return@launch
+                                        }
+                                        recording = false
+                                        activeRecorder = null
+                                        runOutcome { handleVoice(path) }
+                                    }
+                                }
+                            },
+                        ) { Text(if (recording) "Stop" else "Record") }
+                    }
 
+                    recorderError?.let { Text("Mic: $it") }
                     status?.let { Text(it) }
                     rawOutput?.let {
                         Text(

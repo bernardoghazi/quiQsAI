@@ -1,7 +1,8 @@
 package com.quiqs.shared.llm
 
 interface LlmEngine {
-    suspend fun generate(prompt: String): String
+    suspend fun generate(prompt: String, audioPath: String? = null): String
+
     fun close()
 }
 

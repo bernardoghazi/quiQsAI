@@ -117,7 +117,7 @@ Create, list, edit, delete text-only Qs with no alarms. Local persistence (SQLDe
 LLM, no audio.
 **Exit:** create a Q, kill the app, reopen, it's still there.
 
-### Phase 2 — LLM integration (typed prompts) *(in progress)*
+### Phase 2 — LLM integration (typed prompts) *(done)*
 
 Earliest feasibility check — validates the single biggest unknown: *can Gemma 4 run on an Android device and produce useful structured output?*
 

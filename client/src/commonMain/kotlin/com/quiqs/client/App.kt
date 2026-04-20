@@ -6,13 +6,19 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import com.quiqs.client.audio.NoRecorder
+import com.quiqs.client.audio.RecorderProvider
 import com.quiqs.client.ui.QDetailScreen
 import com.quiqs.client.ui.QListScreen
 import com.quiqs.client.ui.QPromptScreen
 import com.quiqs.shared.QRepository
 
 @Composable
-fun App(repository: QRepository, agentProvider: AgentProvider = NoAgent) {
+fun App(
+    repository: QRepository,
+    agentProvider: AgentProvider = NoAgent,
+    recorderProvider: RecorderProvider = NoRecorder,
+) {
     var route by remember { mutableStateOf<Route>(Route.List) }
     MaterialTheme {
         when (val current = route) {
@@ -29,6 +35,7 @@ fun App(repository: QRepository, agentProvider: AgentProvider = NoAgent) {
             )
             is Route.Prompt -> QPromptScreen(
                 agentProvider = agentProvider,
+                recorderProvider = recorderProvider,
                 onBack = { route = Route.List },
             )
         }

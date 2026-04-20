@@ -39,7 +39,20 @@ class LlmPromptBuilder(
     private val clock: () -> Instant,
     private val timeZone: TimeZone = TimeZone.currentSystemDefault(),
 ) {
-    fun build(userPrompt: String, existing: List<Q>): String {
+    fun build(userPrompt: String, existing: List<Q>): String =
+        buildBase(existing) {
+            appendLine("User prompt:")
+            appendLine(userPrompt)
+            appendLine()
+        }
+
+    fun buildForAudio(existing: List<Q>): String =
+        buildBase(existing) {
+            appendLine("The user's prompt is provided as an audio attachment. Transcribe it silently and treat the transcription as the user prompt.")
+            appendLine()
+        }
+
+    private inline fun buildBase(existing: List<Q>, userSection: StringBuilder.() -> Unit): String {
         val now = clock()
         val snapshots = existing.map { it.toSnapshot() }
         val snapshotsJson = promptJson.encodeToString(snapshotsSerializer, snapshots)
@@ -52,9 +65,7 @@ class LlmPromptBuilder(
             appendLine("Existing Qs (JSON):")
             appendLine(snapshotsJson)
             appendLine()
-            appendLine("User prompt:")
-            appendLine(userPrompt)
-            appendLine()
+            userSection()
             append(OUTPUT_INSTRUCTIONS)
         }
     }
