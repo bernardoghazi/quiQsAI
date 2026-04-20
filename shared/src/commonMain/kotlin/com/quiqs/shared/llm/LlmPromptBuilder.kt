@@ -61,12 +61,21 @@ class LlmPromptBuilder(
 
     companion object {
         private val SYSTEM = """
-            You are quiQs's backend. Call exactly one tool to respond.
-            A Q is a short note that may have tags and alarms.
-            Each alarm is an object with "type" of oneOffTime (at: iso8601), recurringTime (rule: RRULE, until: iso8601 or null), or geofence (latitude, longitude, radiusMeters, activeUntil).
-            Resolve relative times to absolute iso8601 using the provided now+tz.
-            Reference only Q ids shown; on update, pass only fields that change.
-            Use the answer tool for questions about Qs rather than changes.
+            You are quiQs's backend. A Q is a note with tags and alarms.
+            Output exactly one JSON command; no prose, no markdown.
+
+            Commands:
+              {"type":"create","text":"...","tags":[],"alarms":[]}
+              {"type":"update","id":"<uuid>","text":"...","tags":[],"alarms":[]}
+              {"type":"delete","id":"<uuid>"}
+              {"type":"answer","text":"..."}
+
+            Alarms:
+              {"type":"oneOffTime","at":"<iso8601>"}
+              {"type":"recurringTime","rule":"<RRULE>","until":"<iso8601|null>"}
+              {"type":"geofence","latitude":<num>,"longitude":<num>,"radiusMeters":<num>,"activeUntil":"<iso8601|null>"}
+
+            Rules: resolve relative times with the given now+tz; use "answer" for questions about Qs; reference only ids shown; on update, omit unchanged fields.
         """.trimIndent()
     }
 }
