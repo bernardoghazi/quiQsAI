@@ -34,6 +34,8 @@ import com.quiqs.client.audio.RecorderProvider
 import com.quiqs.client.audio.RecorderStatus
 import com.quiqs.shared.llm.QAgent
 import com.quiqs.shared.llm.QAgentOutcome
+import kotlin.time.Duration
+import kotlin.time.TimeSource
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -52,6 +54,7 @@ fun QPromptScreen(
     var activeRecorder by remember { mutableStateOf<AudioRecorder?>(null) }
     var status by remember { mutableStateOf<String?>(null) }
     var rawOutput by remember { mutableStateOf<String?>(null) }
+    var lastDuration by remember { mutableStateOf<Duration?>(null) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(agentProvider) {
@@ -70,6 +73,8 @@ fun QPromptScreen(
         busy = true
         status = null
         rawOutput = null
+        lastDuration = null
+        val mark = TimeSource.Monotonic.markNow()
         runCatching { a.block() }
             .onSuccess { outcome ->
                 when (outcome) {
@@ -84,6 +89,7 @@ fun QPromptScreen(
                 }
             }
             .onFailure { status = "Error: ${it.message ?: it::class.simpleName}" }
+        lastDuration = mark.elapsedNow()
         busy = false
     }
 
@@ -165,6 +171,7 @@ fun QPromptScreen(
                     }
 
                     recorderError?.let { Text("Mic: $it") }
+                    lastDuration?.let { Text("Inference: ${it.inWholeMilliseconds} ms") }
                     status?.let { Text(it) }
                     rawOutput?.let {
                         Text(
