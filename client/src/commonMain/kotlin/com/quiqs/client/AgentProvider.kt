@@ -2,8 +2,15 @@ package com.quiqs.client
 
 import com.quiqs.shared.llm.QAgent
 
-fun interface AgentProvider {
-    suspend fun get(): QAgent?
+sealed interface AgentStatus {
+    data class Available(val agent: QAgent) : AgentStatus
+    data class Unavailable(val reason: String) : AgentStatus
 }
 
-val NoAgent: AgentProvider = AgentProvider { null }
+fun interface AgentProvider {
+    suspend fun get(): AgentStatus
+}
+
+val NoAgent: AgentProvider = AgentProvider {
+    AgentStatus.Unavailable("No on-device LLM is wired up on this platform.")
+}

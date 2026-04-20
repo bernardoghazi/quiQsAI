@@ -26,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import com.quiqs.client.AgentProvider
+import com.quiqs.client.AgentStatus
 import com.quiqs.shared.llm.QAgent
 import com.quiqs.shared.llm.QAgentOutcome
 import kotlinx.coroutines.launch
@@ -43,8 +44,10 @@ fun QPromptScreen(agentProvider: AgentProvider, onBack: () -> Unit) {
 
     LaunchedEffect(agentProvider) {
         try {
-            agent = agentProvider.get()
-            if (agent == null) agentError = "No LLM engine available on this platform."
+            when (val status = agentProvider.get()) {
+                is AgentStatus.Available -> agent = status.agent
+                is AgentStatus.Unavailable -> agentError = status.reason
+            }
         } catch (t: Throwable) {
             agentError = t.message ?: t::class.simpleName ?: "Failed to initialize LLM"
         }

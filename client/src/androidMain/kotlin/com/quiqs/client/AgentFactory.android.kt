@@ -16,20 +16,24 @@ fun createAgentProvider(context: Context, repository: QRepository): AgentProvide
     val appContext = context.applicationContext
     return AgentProvider {
         withContext(Dispatchers.IO) {
-            val modelFile = resolveModelFile(appContext) ?: return@withContext null
+            val candidates = candidatePaths(appContext)
+            val modelFile = candidates.firstOrNull { it.exists() }
+                ?: return@withContext AgentStatus.Unavailable(
+                    "Model file not found. Push it to one of:\n" +
+                        candidates.joinToString("\n") { "  • ${it.absolutePath}" },
+                )
             val engine = LlmEngineFactory.create(modelFile.absolutePath)
-            QAgent(
+            val agent = QAgent(
                 engine = engine,
                 repository = repository,
                 promptBuilder = LlmPromptBuilder(clock = { Clock.System.now() }),
             )
+            AgentStatus.Available(agent)
         }
     }
 }
 
-private fun resolveModelFile(context: Context): File? {
-    val external = context.getExternalFilesDir(null)?.let { File(it, MODEL_FILENAME) }
-    if (external != null && external.exists()) return external
-    val internal = File(context.filesDir, MODEL_FILENAME)
-    return internal.takeIf { it.exists() }
-}
+private fun candidatePaths(context: Context): List<File> = listOfNotNull(
+    context.getExternalFilesDir(null)?.let { File(it, MODEL_FILENAME) },
+    File(context.filesDir, MODEL_FILENAME),
+)
