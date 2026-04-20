@@ -10,19 +10,24 @@ private class LiteRtLmEngine(modelPath: String) : LlmEngine {
 
     private val engine: Engine = Engine(EngineConfig(modelPath = modelPath)).also { it.initialize() }
 
-    override suspend fun generate(prompt: String, audioPath: String?): String =
-        engine.createConversation().use { conversation ->
-            val contents = if (audioPath != null) {
-                Contents.of(Content.AudioFile(audioPath), Content.Text(prompt))
-            } else {
-                Contents.of(Content.Text(prompt))
-            }
-            val buffer = StringBuilder()
-            conversation.sendMessageAsync(contents).collect { chunk ->
-                buffer.append(chunk.toString())
-            }
-            buffer.toString()
+    override suspend fun generate(
+        prompt: String,
+        audioPath: String?,
+        onChunk: (String) -> Unit,
+    ): String = engine.createConversation().use { conversation ->
+        val contents = if (audioPath != null) {
+            Contents.of(Content.AudioFile(audioPath), Content.Text(prompt))
+        } else {
+            Contents.of(Content.Text(prompt))
         }
+        val buffer = StringBuilder()
+        conversation.sendMessageAsync(contents).collect { chunk ->
+            val piece = chunk.toString()
+            buffer.append(piece)
+            onChunk(piece)
+        }
+        buffer.toString()
+    }
 
     override fun close() {
         engine.close()

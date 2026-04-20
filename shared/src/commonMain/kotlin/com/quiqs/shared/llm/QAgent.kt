@@ -9,14 +9,14 @@ class QAgent(
     private val parser: LlmCommandParser = LlmCommandParser(),
     private val dispatcher: QCommandDispatcher = QCommandDispatcher(repository),
 ) {
-    suspend fun handle(userPrompt: String): QAgentOutcome =
-        run(promptBuilder.build(userPrompt, repository.getAll()), audioPath = null)
+    suspend fun handle(userPrompt: String, onChunk: (String) -> Unit = {}): QAgentOutcome =
+        run(promptBuilder.build(userPrompt, repository.getAll()), audioPath = null, onChunk = onChunk)
 
-    suspend fun handleVoice(audioPath: String): QAgentOutcome =
-        run(promptBuilder.buildForAudio(repository.getAll()), audioPath = audioPath)
+    suspend fun handleVoice(audioPath: String, onChunk: (String) -> Unit = {}): QAgentOutcome =
+        run(promptBuilder.buildForAudio(repository.getAll()), audioPath = audioPath, onChunk = onChunk)
 
-    private suspend fun run(prompt: String, audioPath: String?): QAgentOutcome {
-        val raw = engine.generate(prompt, audioPath)
+    private suspend fun run(prompt: String, audioPath: String?, onChunk: (String) -> Unit): QAgentOutcome {
+        val raw = engine.generate(prompt, audioPath, onChunk)
         val command = parser.parse(raw).getOrElse { err ->
             return QAgentOutcome.ParseFailed(raw, err.message ?: "parse error")
         }

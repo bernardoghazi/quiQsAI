@@ -28,7 +28,6 @@ fun Q.toSnapshot(): QSnapshot = QSnapshot(
 )
 
 private val promptJson = Json {
-    prettyPrint = true
     classDiscriminator = "type"
     encodeDefaults = true
 }

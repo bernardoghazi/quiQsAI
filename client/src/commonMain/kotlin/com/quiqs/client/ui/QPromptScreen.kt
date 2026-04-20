@@ -54,6 +54,7 @@ fun QPromptScreen(
     var activeRecorder by remember { mutableStateOf<AudioRecorder?>(null) }
     var status by remember { mutableStateOf<String?>(null) }
     var rawOutput by remember { mutableStateOf<String?>(null) }
+    var streaming by remember { mutableStateOf("") }
     var lastDuration by remember { mutableStateOf<Duration?>(null) }
     val scope = rememberCoroutineScope()
 
@@ -73,6 +74,7 @@ fun QPromptScreen(
         busy = true
         status = null
         rawOutput = null
+        streaming = ""
         lastDuration = null
         val mark = TimeSource.Monotonic.markNow()
         runCatching { a.block() }
@@ -126,7 +128,7 @@ fun QPromptScreen(
                             enabled = !busy && !recording && prompt.isNotBlank(),
                             onClick = {
                                 val p = prompt
-                                scope.launch { runOutcome { handle(p) } }
+                                scope.launch { runOutcome { handle(p) { streaming += it } } }
                             },
                         ) { Text(if (busy) "Thinking…" else "Send") }
 
@@ -163,7 +165,7 @@ fun QPromptScreen(
                                         }
                                         recording = false
                                         activeRecorder = null
-                                        runOutcome { handleVoice(path) }
+                                        runOutcome { handleVoice(path) { streaming += it } }
                                     }
                                 }
                             },
@@ -171,6 +173,9 @@ fun QPromptScreen(
                     }
 
                     recorderError?.let { Text("Mic: $it") }
+                    if (busy && streaming.isNotEmpty()) {
+                        Text(text = streaming, fontFamily = FontFamily.Monospace)
+                    }
                     lastDuration?.let { Text("Inference: ${it.inWholeMilliseconds} ms") }
                     status?.let { Text(it) }
                     rawOutput?.let {
