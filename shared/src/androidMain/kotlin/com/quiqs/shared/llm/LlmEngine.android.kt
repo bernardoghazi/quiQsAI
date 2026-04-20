@@ -10,13 +10,14 @@ import com.google.ai.edge.litertlm.EngineConfig
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.transformWhile
 
-private class LiteRtLmEngine(modelPath: String) : LlmEngine {
+private class LiteRtLmEngine(modelPath: String, cacheDir: String?) : LlmEngine {
 
     private val engine: Engine = Engine(
         EngineConfig(
             modelPath = modelPath,
             backend = Backend.CPU(numOfThreads = Runtime.getRuntime().availableProcessors()),
             audioBackend = Backend.CPU(),
+            cacheDir = cacheDir,
         ),
     ).also { it.initialize() }
 
@@ -57,5 +58,6 @@ private class LiteRtLmEngine(modelPath: String) : LlmEngine {
 }
 
 actual object LlmEngineFactory {
-    actual fun create(modelPath: String): LlmEngine = LiteRtLmEngine(modelPath)
+    actual fun create(modelPath: String, cacheDir: String?): LlmEngine =
+        LiteRtLmEngine(modelPath, cacheDir)
 }

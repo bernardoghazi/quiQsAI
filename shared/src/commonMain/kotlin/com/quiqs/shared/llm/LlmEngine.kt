@@ -12,5 +12,5 @@ interface LlmEngine {
 }
 
 expect object LlmEngineFactory {
-    fun create(modelPath: String): LlmEngine
+    fun create(modelPath: String, cacheDir: String? = null): LlmEngine
 }

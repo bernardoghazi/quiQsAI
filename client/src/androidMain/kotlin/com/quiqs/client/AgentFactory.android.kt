@@ -22,7 +22,10 @@ fun createAgentProvider(context: Context, repository: QRepository): AgentProvide
                     "Model file not found. Push it to one of:\n" +
                         candidates.joinToString("\n") { "  • ${it.absolutePath}" },
                 )
-            val engine = LlmEngineFactory.create(modelFile.absolutePath)
+            val engine = LlmEngineFactory.create(
+                modelPath = modelFile.absolutePath,
+                cacheDir = appContext.cacheDir.absolutePath,
+            )
             val agent = QAgent(
                 engine = engine,
                 repository = repository,
