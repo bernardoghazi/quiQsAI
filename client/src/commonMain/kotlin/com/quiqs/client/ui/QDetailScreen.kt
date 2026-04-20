@@ -33,6 +33,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
+import kotlin.time.ExperimentalTime
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
@@ -103,6 +104,10 @@ fun QDetailScreen(
             }
 
             existing?.let { q ->
+                if (q.tags.isNotEmpty()) {
+                    Text("Tags", fontWeight = FontWeight.SemiBold)
+                    Text(q.tags.joinToString(", "))
+                }
                 if (q.alarms.isNotEmpty()) {
                     Text("Alarms", fontWeight = FontWeight.SemiBold)
                     q.alarms.forEach { Text("• ${it.describe()}") }
@@ -114,12 +119,14 @@ fun QDetailScreen(
     }
 }
 
+@OptIn(ExperimentalTime::class)
 private fun Alarm.describe(): String = when (this) {
     is Alarm.OneOffTime -> "One-off @ ${at.toLocalDisplay()} (raw: $at)"
     is Alarm.RecurringTime -> "Recurring: $rule" + (until?.let { ", until ${it.toLocalDisplay()}" } ?: "")
     is Alarm.Geofence -> "Geofence ${latitude}, ${longitude} (${radiusMeters}m)"
 }
 
+@OptIn(ExperimentalTime::class)
 private fun kotlinx.datetime.Instant.toLocalDisplay(): String {
     val local = toLocalDateTime(TimeZone.currentSystemDefault())
     return "${local.date} ${local.hour.pad()}:${local.minute.pad()}"

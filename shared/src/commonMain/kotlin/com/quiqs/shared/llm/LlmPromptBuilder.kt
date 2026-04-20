@@ -2,11 +2,9 @@
 
 package com.quiqs.shared.llm
 
-import com.quiqs.shared.Alarm
 import com.quiqs.shared.Q
 import kotlinx.datetime.Instant
 import kotlinx.datetime.TimeZone
-import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
@@ -16,16 +14,9 @@ import kotlin.uuid.ExperimentalUuidApi
 data class QSnapshot(
     val id: String,
     val text: String,
-    val tags: List<String> = emptyList(),
-    val alarms: List<Alarm> = emptyList(),
 )
 
-fun Q.toSnapshot(): QSnapshot = QSnapshot(
-    id = id.toString(),
-    text = text,
-    tags = tags,
-    alarms = alarms,
-)
+fun Q.toSnapshot(): QSnapshot = QSnapshot(id = id.toString(), text = text)
 
 private val promptJson = Json {
     classDiscriminator = "type"
@@ -61,7 +52,7 @@ class LlmPromptBuilder(
             appendLine("Current time: $now")
             appendLine("Time zone: $timeZone")
             appendLine()
-            appendLine("Existing Qs (JSON):")
+            appendLine("Existing Qs (id + text only; tags and alarms not shown):")
             appendLine(snapshotsJson)
             appendLine()
             userSection()
