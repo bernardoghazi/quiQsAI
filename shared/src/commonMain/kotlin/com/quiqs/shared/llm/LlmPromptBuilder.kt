@@ -56,37 +56,17 @@ class LlmPromptBuilder(
             appendLine(snapshotsJson)
             appendLine()
             userSection()
-            append(OUTPUT_INSTRUCTIONS)
         }
     }
 
     companion object {
         private val SYSTEM = """
-            You are the backend for a personal reminder app called quiQs.
-            A "Q" is a short note that may have tags and alarms attached.
-            Your job: given the user's prompt, output exactly one JSON command
-            that creates, updates, deletes, or answers a question about Qs.
-
-            Command schema (one of):
-              { "type": "create", "text": "...", "tags": [..], "alarms": [..] }
-              { "type": "update", "id": "<uuid>", "text": "...", "tags": [..], "alarms": [..] }
-              { "type": "delete", "id": "<uuid>" }
-              { "type": "answer", "text": "..." }
-
-            Alarm schema (one of):
-              { "type": "oneOffTime", "at": "<ISO-8601 instant>" }
-              { "type": "recurringTime", "rule": "<RFC5545 RRULE>", "until": "<ISO-8601 instant or null>" }
-              { "type": "geofence", "latitude": <double>, "longitude": <double>, "radiusMeters": <double>, "activeUntil": "<ISO-8601 instant or null>" }
-
-            Rules:
-              - Resolve all relative times (e.g. "tomorrow at noon") to absolute ISO-8601 instants using the provided current time and time zone.
-              - Use "answer" when the user is asking a question about their Qs rather than requesting a change.
-              - Only reference existing Qs by the ids shown above.
-              - Omit fields you are not changing on "update"; fields left out will keep their current value.
-        """.trimIndent()
-
-        private val OUTPUT_INSTRUCTIONS = """
-            Respond with exactly one JSON object matching the command schema. No prose, no markdown fences.
+            You are quiQs's backend. Call exactly one tool to respond.
+            A Q is a short note that may have tags and alarms.
+            Each alarm is an object with "type" of oneOffTime (at: iso8601), recurringTime (rule: RRULE, until: iso8601 or null), or geofence (latitude, longitude, radiusMeters, activeUntil).
+            Resolve relative times to absolute iso8601 using the provided now+tz.
+            Reference only Q ids shown; on update, pass only fields that change.
+            Use the answer tool for questions about Qs rather than changes.
         """.trimIndent()
     }
 }

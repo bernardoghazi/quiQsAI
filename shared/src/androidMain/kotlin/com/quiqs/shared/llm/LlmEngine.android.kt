@@ -1,35 +1,28 @@
 package com.quiqs.shared.llm
 
-import android.content.Context
 import com.google.ai.edge.litertlm.Backend
 import com.google.ai.edge.litertlm.Content
 import com.google.ai.edge.litertlm.Contents
 import com.google.ai.edge.litertlm.ConversationConfig
 import com.google.ai.edge.litertlm.Engine
 import com.google.ai.edge.litertlm.EngineConfig
-import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.transformWhile
+import com.google.ai.edge.litertlm.ExperimentalApi
+import com.google.ai.edge.litertlm.ExperimentalFlags
+import com.google.ai.edge.litertlm.ToolCall
 
 private class LiteRtLmEngine(modelPath: String, cacheDir: String?) : LlmEngine {
 
-    private val engine: Engine = run {
-        fun build(backend: Backend) = Engine(
-            EngineConfig(
-                modelPath = modelPath,
-                backend = backend,
-                audioBackend = Backend.CPU(),
-                maxNumTokens = 4096,
-                cacheDir = cacheDir,
-            ),
-        ).also { it.initialize() }
-        try {
-            build(Backend.GPU()).also { android.util.Log.i("LlmEngine", "Using GPU backend") }
-        } catch (t: Throwable) {
-            android.util.Log.w("LlmEngine", "GPU backend unavailable (${t.message}); falling back to CPU")
-            build(Backend.CPU())
-        }
-    }
+    private val engine: Engine = Engine(
+        EngineConfig(
+            modelPath = modelPath,
+            backend = Backend.CPU(),
+            audioBackend = Backend.CPU(),
+            maxNumTokens = 4096,
+            cacheDir = cacheDir,
+        ),
+    ).also { it.initialize() }
 
+    @OptIn(ExperimentalApi::class)
     override suspend fun generate(
         prompt: String,
         systemInstruction: String?,
@@ -38,26 +31,41 @@ private class LiteRtLmEngine(modelPath: String, cacheDir: String?) : LlmEngine {
     ): String {
         val config = ConversationConfig(
             systemInstruction = systemInstruction?.let { Contents.of(Content.Text(it)) },
+            tools = QCommandTools.providers,
+            automaticToolCalling = false,
         )
-        return engine.createConversation(config).use { conversation ->
+        ExperimentalFlags.enableConversationConstrainedDecoding = true
+        val conversation = try {
+            engine.createConversation(config)
+        } finally {
+            ExperimentalFlags.enableConversationConstrainedDecoding = false
+        }
+        return conversation.use { conv ->
             val contents = if (audioPath != null) {
                 Contents.of(Content.AudioFile(audioPath), Content.Text(prompt))
             } else {
                 Contents.of(Content.Text(prompt))
             }
-            val buffer = StringBuilder()
-            val tracker = JsonBalanceTracker()
-            conversation.sendMessageAsync(contents)
-                .transformWhile { chunk ->
-                    val piece = chunk.toString()
-                    emit(piece)
-                    !tracker.consume(piece)
+            val textBuffer = StringBuilder()
+            var lastToolCall: ToolCall? = null
+            conv.sendMessageAsync(contents).collect { message ->
+                val call = message.toolCalls.lastOrNull()
+                if (call != null) {
+                    lastToolCall = call
+                } else {
+                    val piece = message.toString()
+                    textBuffer.append(piece)
+                    onChunk(piece)
                 }
-                .collect {
-                    buffer.append(it)
-                    onChunk(it)
-                }
-            buffer.toString()
+            }
+            val call = lastToolCall
+            if (call != null) {
+                val json = QCommandTools.toCommandJson(call)
+                onChunk(json)
+                json
+            } else {
+                textBuffer.toString()
+            }
         }
     }
 
@@ -67,6 +75,5 @@ private class LiteRtLmEngine(modelPath: String, cacheDir: String?) : LlmEngine {
 }
 
 actual object LlmEngineFactory {
-    actual fun create(modelPath: String, cacheDir: String?): LlmEngine =
-        LiteRtLmEngine(modelPath, cacheDir)
+    actual fun create(modelPath: String, cacheDir: String?): LlmEngine = LiteRtLmEngine(modelPath, cacheDir)
 }
