@@ -56,6 +56,8 @@ fun QPromptScreen(
     var rawOutput by remember { mutableStateOf<String?>(null) }
     var streaming by remember { mutableStateOf("") }
     var lastDuration by remember { mutableStateOf<Duration?>(null) }
+    var timeToFirstChunk by remember { mutableStateOf<Duration?>(null) }
+    var chunkCount by remember { mutableStateOf(0) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(agentProvider) {
@@ -69,15 +71,22 @@ fun QPromptScreen(
         }
     }
 
-    suspend fun runOutcome(block: suspend QAgent.() -> QAgentOutcome) {
+    suspend fun runOutcome(block: suspend QAgent.((String) -> Unit) -> QAgentOutcome) {
         val a = agent ?: return
         busy = true
         status = null
         rawOutput = null
         streaming = ""
         lastDuration = null
+        timeToFirstChunk = null
+        chunkCount = 0
         val mark = TimeSource.Monotonic.markNow()
-        runCatching { a.block() }
+        val onChunk: (String) -> Unit = { piece ->
+            if (chunkCount == 0) timeToFirstChunk = mark.elapsedNow()
+            chunkCount += 1
+            streaming += piece
+        }
+        runCatching { a.block(onChunk) }
             .onSuccess { outcome ->
                 when (outcome) {
                     is QAgentOutcome.Handled -> {
@@ -128,7 +137,7 @@ fun QPromptScreen(
                             enabled = !busy && !recording && prompt.isNotBlank(),
                             onClick = {
                                 val p = prompt
-                                scope.launch { runOutcome { handle(p) { streaming += it } } }
+                                scope.launch { runOutcome { cb -> handle(p, cb) } }
                             },
                         ) { Text(if (busy) "Thinking…" else "Send") }
 
@@ -165,7 +174,7 @@ fun QPromptScreen(
                                         }
                                         recording = false
                                         activeRecorder = null
-                                        runOutcome { handleVoice(path) { streaming += it } }
+                                        runOutcome { cb -> handleVoice(path, cb) }
                                     }
                                 }
                             },
@@ -176,7 +185,22 @@ fun QPromptScreen(
                     if (busy && streaming.isNotEmpty()) {
                         Text(text = streaming, fontFamily = FontFamily.Monospace)
                     }
-                    lastDuration?.let { Text("Inference: ${it.inWholeMilliseconds} ms") }
+                    lastDuration?.let { total ->
+                        val ttft = timeToFirstChunk
+                        val decode = if (ttft != null && chunkCount > 1) {
+                            val decodeMs = (total - ttft).inWholeMilliseconds.coerceAtLeast(1)
+                            val rateTimes10 = ((chunkCount - 1) * 10_000 / decodeMs).toInt()
+                            val w = rateTimes10 / 10
+                            val f = rateTimes10 % 10
+                            " | decode $w.$f chunk/s"
+                        } else ""
+                        Text(
+                            "Total ${total.inWholeMilliseconds} ms" +
+                                (ttft?.let { " | TTFT ${it.inWholeMilliseconds} ms" } ?: "") +
+                                " | chunks $chunkCount" +
+                                decode,
+                        )
+                    }
                     status?.let { Text(it) }
                     rawOutput?.let {
                         Text(

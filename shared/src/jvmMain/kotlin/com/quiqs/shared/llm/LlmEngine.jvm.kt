@@ -12,6 +12,7 @@ private class LiteRtLmEngine(modelPath: String) : LlmEngine {
 
     override suspend fun generate(
         prompt: String,
+        systemInstruction: String?,
         audioPath: String?,
         onChunk: (String) -> Unit,
     ): String = engine.createConversation().use { conversation ->

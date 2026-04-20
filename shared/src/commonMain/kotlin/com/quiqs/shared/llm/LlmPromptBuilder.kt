@@ -38,6 +38,8 @@ class LlmPromptBuilder(
     private val clock: () -> Instant,
     private val timeZone: TimeZone = TimeZone.currentSystemDefault(),
 ) {
+    val systemInstruction: String get() = SYSTEM
+
     fun build(userPrompt: String, existing: List<Q>): String =
         buildBase(existing) {
             appendLine("User prompt:")
@@ -56,8 +58,6 @@ class LlmPromptBuilder(
         val snapshots = existing.map { it.toSnapshot() }
         val snapshotsJson = promptJson.encodeToString(snapshotsSerializer, snapshots)
         return buildString {
-            appendLine(SYSTEM)
-            appendLine()
             appendLine("Current time: $now")
             appendLine("Time zone: $timeZone")
             appendLine()

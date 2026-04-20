@@ -19,7 +19,12 @@ class QAgent(
 
     private suspend fun run(prompt: String, audioPath: String?, onChunk: (String) -> Unit): QAgentOutcome =
         withContext(Dispatchers.Default) {
-            val raw = engine.generate(prompt, audioPath, onChunk)
+            val raw = engine.generate(
+                prompt = prompt,
+                systemInstruction = promptBuilder.systemInstruction,
+                audioPath = audioPath,
+                onChunk = onChunk,
+            )
             val command = parser.parse(raw).getOrElse { err ->
                 return@withContext QAgentOutcome.ParseFailed(raw, err.message ?: "parse error")
             }
