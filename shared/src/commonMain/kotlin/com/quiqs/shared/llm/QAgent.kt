@@ -1,6 +1,8 @@
 package com.quiqs.shared.llm
 
 import com.quiqs.shared.QRepository
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 class QAgent(
     private val engine: LlmEngine,
@@ -15,14 +17,15 @@ class QAgent(
     suspend fun handleVoice(audioPath: String, onChunk: (String) -> Unit = {}): QAgentOutcome =
         run(promptBuilder.buildForAudio(repository.getAll()), audioPath = audioPath, onChunk = onChunk)
 
-    private suspend fun run(prompt: String, audioPath: String?, onChunk: (String) -> Unit): QAgentOutcome {
-        val raw = engine.generate(prompt, audioPath, onChunk)
-        val command = parser.parse(raw).getOrElse { err ->
-            return QAgentOutcome.ParseFailed(raw, err.message ?: "parse error")
+    private suspend fun run(prompt: String, audioPath: String?, onChunk: (String) -> Unit): QAgentOutcome =
+        withContext(Dispatchers.Default) {
+            val raw = engine.generate(prompt, audioPath, onChunk)
+            val command = parser.parse(raw).getOrElse { err ->
+                return@withContext QAgentOutcome.ParseFailed(raw, err.message ?: "parse error")
+            }
+            val result = dispatcher.dispatch(command)
+            QAgentOutcome.Handled(command, result, raw)
         }
-        val result = dispatcher.dispatch(command)
-        return QAgentOutcome.Handled(command, result, raw)
-    }
 }
 
 sealed interface QAgentOutcome {
