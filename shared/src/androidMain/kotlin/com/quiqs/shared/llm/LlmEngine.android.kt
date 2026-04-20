@@ -12,15 +12,23 @@ import kotlinx.coroutines.flow.transformWhile
 
 private class LiteRtLmEngine(modelPath: String, cacheDir: String?) : LlmEngine {
 
-    private val engine: Engine = Engine(
-        EngineConfig(
-            modelPath = modelPath,
-            backend = Backend.CPU(),
-            audioBackend = Backend.CPU(),
-            maxNumTokens = 1024,
-            cacheDir = cacheDir,
-        ),
-    ).also { it.initialize() }
+    private val engine: Engine = run {
+        fun build(backend: Backend) = Engine(
+            EngineConfig(
+                modelPath = modelPath,
+                backend = backend,
+                audioBackend = Backend.CPU(),
+                maxNumTokens = 4096,
+                cacheDir = cacheDir,
+            ),
+        ).also { it.initialize() }
+        try {
+            build(Backend.GPU()).also { android.util.Log.i("LlmEngine", "Using GPU backend") }
+        } catch (t: Throwable) {
+            android.util.Log.w("LlmEngine", "GPU backend unavailable (${t.message}); falling back to CPU")
+            build(Backend.CPU())
+        }
+    }
 
     override suspend fun generate(
         prompt: String,
