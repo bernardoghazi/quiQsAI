@@ -6,7 +6,6 @@ import com.google.ai.edge.litertlm.Contents
 import com.google.ai.edge.litertlm.ConversationConfig
 import com.google.ai.edge.litertlm.Engine
 import com.google.ai.edge.litertlm.EngineConfig
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.transformWhile
 
 private class LiteRtLmEngine(modelPath: String, cacheDir: String?) : LlmEngine {
@@ -14,7 +13,7 @@ private class LiteRtLmEngine(modelPath: String, cacheDir: String?) : LlmEngine {
     private val engine: Engine = Engine(
         EngineConfig(
             modelPath = modelPath,
-            backend = Backend.CPU(),
+            backend = Backend.GPU(),
             audioBackend = Backend.CPU(),
             maxNumTokens = 4096,
             cacheDir = cacheDir,
@@ -50,7 +49,7 @@ private class LiteRtLmEngine(modelPath: String, cacheDir: String?) : LlmEngine {
         }
     }
 
-    override fun close() {
+    override fun close() {//TODO: not being closed anywhere.
         engine.close()
     }
 }
