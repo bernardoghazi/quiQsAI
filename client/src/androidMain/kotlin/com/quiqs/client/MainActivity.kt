@@ -23,6 +23,13 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val repository = createQRepository(applicationContext)
         val agentProvider = createAgentProvider(applicationContext, repository)
+        lifecycle.addObserver(
+            androidx.lifecycle.LifecycleEventObserver { _, event ->
+                if (event == androidx.lifecycle.Lifecycle.Event.ON_DESTROY && isFinishing) {
+                    releaseAgent()
+                }
+            },
+        )
         val recorderProvider = createRecorderProvider(
             context = applicationContext,
             requestPermission = {

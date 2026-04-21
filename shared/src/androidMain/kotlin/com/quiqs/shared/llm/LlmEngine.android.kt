@@ -49,7 +49,7 @@ private class LiteRtLmEngine(modelPath: String, cacheDir: String?) : LlmEngine {
         }
     }
 
-    override fun close() {//TODO: not being closed anywhere.
+    override fun close() {
         engine.close()
     }
 }
