@@ -3,7 +3,6 @@ package com.quiqs.shared.llm
 import com.quiqs.shared.QRepository
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
@@ -17,15 +16,14 @@ private val fullSnapshotsSerializer = ListSerializer(QFullSnapshot.serializer())
 fun queryToolsFor(repository: QRepository): List<LlmTool> = listOf(
     LlmTool(
         name = "search_qs",
-        description = "Search Qs by case-insensitive substring in text or tags. Returns id, text, tags, and alarms for matching Qs.",
-        parametersJsonSchema = """{"type":"object","properties":{"query":{"type":"string","description":"Case-insensitive substring to match"},"limit":{"type":"integer","description":"Max results (default 10)"}},"required":["query"]}""",
+        description = "Search Qs by case-insensitive substring in text or tags. Returns id, text, tags, and alarms for all matching Qs.",
+        parametersJsonSchema = """{"type":"object","properties":{"query":{"type":"string","description":"Case-insensitive substring to match"}},"required":["query"]}""",
         execute = { paramsJson ->
             val params = toolJson.parseToJsonElement(paramsJson).jsonObject
             val query = params["query"]?.jsonPrimitive?.content.orEmpty()
-            val limit = params["limit"]?.jsonPrimitive?.intOrNull ?: 10
             val results = repository.getAll().filter { q ->
                 q.text.contains(query, ignoreCase = true) || q.tags.any { it.contains(query, ignoreCase = true) }
-            }.take(limit).map { it.toFullSnapshot() }
+            }.map { it.toFullSnapshot() }
             toolJson.encodeToString(fullSnapshotsSerializer, results)
         },
     ),

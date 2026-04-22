@@ -148,7 +148,7 @@ class LlmPromptBuilder(
             $BASE
 
             You have tools to look up the user's Qs:
-              search_qs(query, limit): find Qs by case-insensitive substring in text or tags
+              search_qs(query): find Qs by case-insensitive substring in text or tags
               list_all_qs(): list all Qs; use when search is unhelpful
 
             Call tools to fetch data, then respond with exactly:
