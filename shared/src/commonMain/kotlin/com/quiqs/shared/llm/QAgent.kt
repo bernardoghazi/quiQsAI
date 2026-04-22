@@ -55,17 +55,19 @@ class QAgent(
 
     suspend fun queryFromText(prompt: String, onChunk: (String) -> Unit = {}): QAgentOutcome =
         run(
-            prompt = promptBuilder.buildForQuery(repository.getAll(), prompt),
+            prompt = promptBuilder.buildForQuery(prompt),
             systemInstruction = promptBuilder.systemForQuery,
             audioPath = null,
+            tools = queryToolsFor(repository),
             onChunk = onChunk,
         )
 
     suspend fun queryFromVoice(audioPath: String, onChunk: (String) -> Unit = {}): QAgentOutcome =
         run(
-            prompt = promptBuilder.buildForQueryAudio(repository.getAll()),
+            prompt = promptBuilder.buildForQueryAudio(),
             systemInstruction = promptBuilder.systemForQuery,
             audioPath = audioPath,
+            tools = queryToolsFor(repository),
             onChunk = onChunk,
         )
 
@@ -73,6 +75,7 @@ class QAgent(
         prompt: String,
         systemInstruction: String,
         audioPath: String?,
+        tools: List<LlmTool> = emptyList(),
         onChunk: (String) -> Unit,
     ): QAgentOutcome =
         withContext(Dispatchers.Default) {
@@ -80,6 +83,7 @@ class QAgent(
                 prompt = prompt,
                 systemInstruction = systemInstruction,
                 audioPath = audioPath,
+                tools = tools,
                 onChunk = onChunk,
             )
             val command = parser.parse(raw).getOrElse { err ->

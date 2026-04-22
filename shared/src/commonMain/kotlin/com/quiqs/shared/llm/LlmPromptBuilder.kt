@@ -8,15 +8,8 @@ import kotlinx.datetime.Instant
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.offsetAt
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import kotlin.uuid.ExperimentalUuidApi
-
-@Serializable
-data class QSnapshot(
-    val id: String,
-    val text: String,
-)
 
 @Serializable
 data class QFullSnapshot(
@@ -25,8 +18,6 @@ data class QFullSnapshot(
     val tags: List<String>,
     val alarms: List<Alarm>,
 )
-
-fun Q.toSnapshot(): QSnapshot = QSnapshot(id = id.toString(), text = text)
 
 fun Q.toFullSnapshot(): QFullSnapshot = QFullSnapshot(
     id = id.toString(),
@@ -39,8 +30,6 @@ private val promptJson = Json {
     classDiscriminator = "type"
     encodeDefaults = true
 }
-
-private val snapshotsSerializer = ListSerializer(QSnapshot.serializer())
 
 class LlmPromptBuilder(
     private val clock: () -> Instant,
@@ -78,16 +67,14 @@ class LlmPromptBuilder(
             appendLine(AUDIO_INSTRUCTION)
         }
 
-    fun buildForQuery(existing: List<Q>, userPrompt: String): String =
+    fun buildForQuery(userPrompt: String): String =
         buildBase {
-            appendQSnapshots(existing)
             appendLine("User prompt:")
             appendLine(userPrompt)
         }
 
-    fun buildForQueryAudio(existing: List<Q>): String =
+    fun buildForQueryAudio(): String =
         buildBase {
-            appendQSnapshots(existing)
             appendLine(AUDIO_INSTRUCTION)
         }
 
@@ -100,13 +87,6 @@ class LlmPromptBuilder(
             appendLine()
             userSection()
         }
-    }
-
-    private fun StringBuilder.appendQSnapshots(existing: List<Q>) {
-        val snapshots = existing.map { it.toSnapshot() }
-        appendLine("Existing Qs (id + text only; tags and alarms not shown):")
-        appendLine(promptJson.encodeToString(snapshotsSerializer, snapshots))
-        appendLine()
     }
 
     companion object {
@@ -167,10 +147,14 @@ class LlmPromptBuilder(
         private val SYSTEM_QUERY = """
             $BASE
 
-            Command:
+            You have tools to look up the user's Qs:
+              search_qs(query, limit): find Qs by case-insensitive substring in text or tags
+              list_all_qs(): list all Qs; use when search is unhelpful
+
+            Call tools to fetch data, then respond with exactly:
               {"type":"answer","text":"..."}
 
-            Answer questions about the user's existing Qs. Reference only ids shown.
+            Reference only ids returned by tools.
         """.trimIndent()
     }
 }

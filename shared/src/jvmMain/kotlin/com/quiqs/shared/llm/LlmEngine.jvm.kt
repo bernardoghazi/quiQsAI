@@ -16,6 +16,7 @@ private class LiteRtLmEngine(modelPath: String, cacheDir: String?) : LlmEngine {
         prompt: String,
         systemInstruction: String?,
         audioPath: String?,
+        tools: List<LlmTool>,
         onChunk: (String) -> Unit,
     ): String = engine.createConversation().use { conversation ->
         val contents = if (audioPath != null) {

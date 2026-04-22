@@ -5,6 +5,7 @@ interface LlmEngine {
         prompt: String,
         systemInstruction: String? = null,
         audioPath: String? = null,
+        tools: List<LlmTool> = emptyList(),
         onChunk: (String) -> Unit = {},
     ): String
 
