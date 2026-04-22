@@ -6,6 +6,7 @@ import com.google.ai.edge.litertlm.Contents
 import com.google.ai.edge.litertlm.ConversationConfig
 import com.google.ai.edge.litertlm.Engine
 import com.google.ai.edge.litertlm.EngineConfig
+import com.google.ai.edge.litertlm.SamplerConfig
 import kotlinx.coroutines.flow.transformWhile
 
 private class LiteRtLmEngine(modelPath: String, cacheDir: String?) : LlmEngine {
@@ -28,6 +29,7 @@ private class LiteRtLmEngine(modelPath: String, cacheDir: String?) : LlmEngine {
     ): String {
         val config = ConversationConfig(
             systemInstruction = systemInstruction?.let { Contents.of(Content.Text(it)) },
+            samplerConfig = SamplerConfig(topK = 1, topP = 1.0, temperature = 0.0),
         )
         return engine.createConversation(config).use { conversation ->
             val contents = if (audioPath != null) {
