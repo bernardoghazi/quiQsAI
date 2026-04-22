@@ -31,9 +31,9 @@ import kotlin.uuid.Uuid
 @Composable
 fun QListScreen(
     repository: QRepository,
-    onNewQ: () -> Unit,
+    onAddQ: () -> Unit,
     onOpenQ: (Uuid) -> Unit,
-    onOpenPrompt: () -> Unit,
+    onQueryQs: () -> Unit,
 ) {
     val qs by repository.observeAll().collectAsState(initial = emptyList())
 
@@ -42,12 +42,12 @@ fun QListScreen(
             TopAppBar(
                 title = { Text("quiQs") },
                 actions = {
-                    TextButton(onClick = onOpenPrompt) { Text("Ask") }
+                    TextButton(onClick = onQueryQs) { Text("Query") }
                 },
             )
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = onNewQ) { Text("+", fontSize = 24.sp) }
+            FloatingActionButton(onClick = onAddQ) { Text("+", fontSize = 24.sp) }
         },
     ) { padding ->
         if (qs.isEmpty()) {
@@ -55,7 +55,7 @@ fun QListScreen(
                 modifier = Modifier.fillMaxSize().padding(padding),
                 contentAlignment = Alignment.Center,
             ) {
-                Text("No Qs yet — tap + to create one")
+                Text("No Qs yet — tap + to add one")
             }
         } else {
             LazyColumn(Modifier.fillMaxSize().padding(padding)) {

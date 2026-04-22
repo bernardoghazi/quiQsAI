@@ -43,6 +43,7 @@ fun QDetailScreen(
     repository: QRepository,
     qId: Uuid?,
     onBack: () -> Unit,
+    onEditWithAi: (Uuid) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     val flow: Flow<Q?> = remember(qId) {
@@ -94,6 +95,7 @@ fun QDetailScreen(
                 ) { Text("Save") }
 
                 if (qId != null) {
+                    OutlinedButton(onClick = { onEditWithAi(qId) }) { Text("Edit with AI") }
                     OutlinedButton(onClick = {
                         scope.launch {
                             repository.delete(qId)

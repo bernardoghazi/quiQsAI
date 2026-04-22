@@ -24,18 +24,20 @@ fun App(
         when (val current = route) {
             is Route.List -> QListScreen(
                 repository = repository,
-                onNewQ = { route = Route.Detail(id = null) },
+                onAddQ = { route = Route.Prompt(PromptMode.Create) },
                 onOpenQ = { id -> route = Route.Detail(id = id) },
-                onOpenPrompt = { route = Route.Prompt },
+                onQueryQs = { route = Route.Prompt(PromptMode.Query) },
             )
             is Route.Detail -> QDetailScreen(
                 repository = repository,
                 qId = current.id,
                 onBack = { route = Route.List },
+                onEditWithAi = { id -> route = Route.Prompt(PromptMode.Edit(id)) },
             )
             is Route.Prompt -> QPromptScreen(
                 agentProvider = agentProvider,
                 recorderProvider = recorderProvider,
+                mode = current.mode,
                 onBack = { route = Route.List },
             )
         }

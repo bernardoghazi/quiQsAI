@@ -23,6 +23,7 @@ interface QRepository {
     fun observeAll(): Flow<List<Q>>
     fun observeById(id: Uuid): Flow<Q?>
     suspend fun getAll(): List<Q>
+    suspend fun getById(id: Uuid): Q?
     suspend fun create(
         text: String,
         tags: List<String> = emptyList(),
@@ -62,6 +63,9 @@ class SqlDelightQRepository(driver: SqlDriver) : QRepository {
 
     override suspend fun getAll(): List<Q> =
         queries.selectAll().executeAsList().map(::toDomain)
+
+    override suspend fun getById(id: Uuid): Q? =
+        queries.selectById(id.toString()).executeAsOneOrNull()?.let(::toDomain)
 
     override suspend fun create(text: String, tags: List<String>, alarms: List<Alarm>): Q {
         val now = Clock.System.now()

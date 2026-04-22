@@ -1,8 +1,12 @@
+@file:OptIn(ExperimentalUuidApi::class)
+
 package com.quiqs.shared.llm
 
 import com.quiqs.shared.QRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 
 class QAgent(
     private val engine: LlmEngine,
@@ -11,17 +15,70 @@ class QAgent(
     private val parser: LlmCommandParser = LlmCommandParser(),
     private val dispatcher: QCommandDispatcher = QCommandDispatcher(repository),
 ) {
-    suspend fun handle(userPrompt: String, onChunk: (String) -> Unit = {}): QAgentOutcome =
-        run(promptBuilder.build(userPrompt, repository.getAll()), audioPath = null, onChunk = onChunk)
+    suspend fun createFromText(prompt: String, onChunk: (String) -> Unit = {}): QAgentOutcome =
+        run(
+            prompt = promptBuilder.buildForCreate(prompt),
+            systemInstruction = promptBuilder.systemForCreate,
+            audioPath = null,
+            onChunk = onChunk,
+        )
 
-    suspend fun handleVoice(audioPath: String, onChunk: (String) -> Unit = {}): QAgentOutcome =
-        run(promptBuilder.buildForAudio(repository.getAll()), audioPath = audioPath, onChunk = onChunk)
+    suspend fun createFromVoice(audioPath: String, onChunk: (String) -> Unit = {}): QAgentOutcome =
+        run(
+            prompt = promptBuilder.buildForCreateAudio(),
+            systemInstruction = promptBuilder.systemForCreate,
+            audioPath = audioPath,
+            onChunk = onChunk,
+        )
 
-    private suspend fun run(prompt: String, audioPath: String?, onChunk: (String) -> Unit): QAgentOutcome =
+    suspend fun editFromText(qId: Uuid, prompt: String, onChunk: (String) -> Unit = {}): QAgentOutcome {
+        val q = repository.getById(qId)
+            ?: return QAgentOutcome.ParseFailed(raw = "", reason = "No Q with id $qId")
+        return run(
+            prompt = promptBuilder.buildForEdit(q, prompt),
+            systemInstruction = promptBuilder.systemForEdit,
+            audioPath = null,
+            onChunk = onChunk,
+        )
+    }
+
+    suspend fun editFromVoice(qId: Uuid, audioPath: String, onChunk: (String) -> Unit = {}): QAgentOutcome {
+        val q = repository.getById(qId)
+            ?: return QAgentOutcome.ParseFailed(raw = "", reason = "No Q with id $qId")
+        return run(
+            prompt = promptBuilder.buildForEditAudio(q),
+            systemInstruction = promptBuilder.systemForEdit,
+            audioPath = audioPath,
+            onChunk = onChunk,
+        )
+    }
+
+    suspend fun queryFromText(prompt: String, onChunk: (String) -> Unit = {}): QAgentOutcome =
+        run(
+            prompt = promptBuilder.buildForQuery(repository.getAll(), prompt),
+            systemInstruction = promptBuilder.systemForQuery,
+            audioPath = null,
+            onChunk = onChunk,
+        )
+
+    suspend fun queryFromVoice(audioPath: String, onChunk: (String) -> Unit = {}): QAgentOutcome =
+        run(
+            prompt = promptBuilder.buildForQueryAudio(repository.getAll()),
+            systemInstruction = promptBuilder.systemForQuery,
+            audioPath = audioPath,
+            onChunk = onChunk,
+        )
+
+    private suspend fun run(
+        prompt: String,
+        systemInstruction: String,
+        audioPath: String?,
+        onChunk: (String) -> Unit,
+    ): QAgentOutcome =
         withContext(Dispatchers.Default) {
             val raw = engine.generate(
                 prompt = prompt,
-                systemInstruction = promptBuilder.systemInstruction,
+                systemInstruction = systemInstruction,
                 audioPath = audioPath,
                 onChunk = onChunk,
             )

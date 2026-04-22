@@ -29,6 +29,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import com.quiqs.client.AgentProvider
 import com.quiqs.client.AgentStatus
+import com.quiqs.client.PromptMode
 import com.quiqs.client.audio.AudioRecorder
 import com.quiqs.client.audio.RecorderProvider
 import com.quiqs.client.audio.RecorderStatus
@@ -36,13 +37,15 @@ import com.quiqs.shared.llm.QAgent
 import com.quiqs.shared.llm.QAgentOutcome
 import kotlin.time.Duration
 import kotlin.time.TimeSource
+import kotlin.uuid.ExperimentalUuidApi
 import kotlinx.coroutines.launch
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalUuidApi::class)
 @Composable
 fun QPromptScreen(
     agentProvider: AgentProvider,
     recorderProvider: RecorderProvider,
+    mode: PromptMode,
     onBack: () -> Unit,
 ) {
     var agent by remember { mutableStateOf<QAgent?>(null) }
@@ -104,10 +107,21 @@ fun QPromptScreen(
         busy = false
     }
 
+    val title = when (mode) {
+        PromptMode.Create -> "Add Q"
+        PromptMode.Query -> "Query Qs"
+        is PromptMode.Edit -> "Edit Q"
+    }
+    val placeholder = when (mode) {
+        PromptMode.Create -> "What should I remind you of?"
+        PromptMode.Query -> "Ask about your Qs"
+        is PromptMode.Edit -> "Describe the change"
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Ask quiQs") },
+                title = { Text(title) },
                 navigationIcon = {
                     IconButton(onClick = onBack) { Text("<") }
                 },
@@ -129,7 +143,7 @@ fun QPromptScreen(
                     OutlinedTextField(
                         value = prompt,
                         onValueChange = { prompt = it },
-                        label = { Text("What do you want?") },
+                        label = { Text(placeholder) },
                         modifier = Modifier.fillMaxWidth(),
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -137,7 +151,15 @@ fun QPromptScreen(
                             enabled = !busy && !recording && prompt.isNotBlank(),
                             onClick = {
                                 val p = prompt
-                                scope.launch { runOutcome { cb -> handle(p, cb) } }
+                                scope.launch {
+                                    runOutcome { cb ->
+                                        when (mode) {
+                                            PromptMode.Create -> createFromText(p, cb)
+                                            PromptMode.Query -> queryFromText(p, cb)
+                                            is PromptMode.Edit -> editFromText(mode.qId, p, cb)
+                                        }
+                                    }
+                                }
                             },
                         ) { Text(if (busy) "Thinking…" else "Send") }
 
@@ -174,7 +196,13 @@ fun QPromptScreen(
                                         }
                                         recording = false
                                         activeRecorder = null
-                                        runOutcome { cb -> handleVoice(path, cb) }
+                                        runOutcome { cb ->
+                                            when (mode) {
+                                                PromptMode.Create -> createFromVoice(path, cb)
+                                                PromptMode.Query -> queryFromVoice(path, cb)
+                                                is PromptMode.Edit -> editFromVoice(mode.qId, path, cb)
+                                            }
+                                        }
                                     }
                                 }
                             },
