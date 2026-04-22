@@ -17,22 +17,42 @@ fun queryToolsFor(repository: QRepository): List<LlmTool> = listOf(
     LlmTool(
         name = "search_qs",
         description = "Search Qs by case-insensitive substring in text or tags. Returns id, text, tags, and alarms for all matching Qs.",
-        parametersJsonSchema = """{"type":"object","properties":{"query":{"type":"string","description":"Case-insensitive substring to match"}},"required":["query"]}""",
+        parametersJsonSchema = """
+            {
+              "type": "object",
+              "properties": {
+                "query": {
+                  "type": "string",
+                  "description": "Case-insensitive substring to match"
+                }
+              },
+              "required": ["query"]
+            }
+        """.trimIndent(),
         execute = { paramsJson ->
+            println("[QueryTools] search_qs called with $paramsJson")
             val params = toolJson.parseToJsonElement(paramsJson).jsonObject
             val query = params["query"]?.jsonPrimitive?.content.orEmpty()
             val results = repository.getAll().filter { q ->
                 q.text.contains(query, ignoreCase = true) || q.tags.any { it.contains(query, ignoreCase = true) }
             }.map { it.toFullSnapshot() }
+            println("[QueryTools] search_qs returning ${results.size} Qs")
             toolJson.encodeToString(fullSnapshotsSerializer, results)
         },
     ),
     LlmTool(
         name = "list_all_qs",
         description = "List all Qs. Use when a keyword search is unhelpful (e.g., 'how many Qs do I have?').",
-        parametersJsonSchema = """{"type":"object","properties":{}}""",
+        parametersJsonSchema = """
+            {
+              "type": "object",
+              "properties": {}
+            }
+        """.trimIndent(),
         execute = { _ ->
+            println("[QueryTools] list_all_qs called")
             val results = repository.getAll().map { it.toFullSnapshot() }
+            println("[QueryTools] list_all_qs returning ${results.size} Qs")
             toolJson.encodeToString(fullSnapshotsSerializer, results)
         },
     ),
