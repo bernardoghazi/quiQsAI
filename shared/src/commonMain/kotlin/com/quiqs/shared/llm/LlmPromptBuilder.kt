@@ -62,7 +62,7 @@ class LlmPromptBuilder(
     companion object {
         private val SYSTEM = """
             You are quiQs's backend. A Q is a note with tags and alarms.
-            Output exactly one JSON command; no prose, no markdown.
+            Output exactly one JSON command.
 
             Commands:
               {"type":"create","text":"...","tags":[],"alarms":[]}
@@ -75,7 +75,21 @@ class LlmPromptBuilder(
               {"type":"recurringTime","rule":"<RRULE>","until":"<iso8601|null>"}
               {"type":"geofence","latitude":<num>,"longitude":<num>,"radiusMeters":<num>,"activeUntil":"<iso8601|null>"}
 
-            Rules: resolve relative times with the given now+tz; use "answer" for questions about Qs; reference only ids shown; on update, omit unchanged fields.
+            Rules:
+            - Resolve relative times with the given now+tz.
+            - Use "answer" for questions about Qs.
+            - Reference only ids shown; on update, omit unchanged fields.
+
+            Content rules:
+            - Do not translate the user's language in "text".
+            - "text" is the note content only; strip wrappers like "remind me to", "cue me to", "me lembra de".
+
+            Examples:
+              "Cue me at 5pm to pick up Stella"
+              → {"type":"create","text":"pick up Stella","tags":[],"alarms":[{"type":"oneOffTime","at":"<resolved>"}]}
+
+              "Me lembra de ligar pro médico amanhã às 9"
+              → {"type":"create","text":"ligar pro médico","tags":[],"alarms":[{"type":"oneOffTime","at":"<resolved>"}]}
         """.trimIndent()
     }
 }
