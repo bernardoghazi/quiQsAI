@@ -5,6 +5,7 @@ package com.quiqs.shared.llm
 import com.quiqs.shared.Q
 import kotlinx.datetime.Instant
 import kotlinx.datetime.TimeZone
+import kotlinx.datetime.offsetAt
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
@@ -46,11 +47,12 @@ class LlmPromptBuilder(
 
     private inline fun buildBase(existing: List<Q>, userSection: StringBuilder.() -> Unit): String {
         val now = clock()
+        val offset = timeZone.offsetAt(now)
         val snapshots = existing.map { it.toSnapshot() }
         val snapshotsJson = promptJson.encodeToString(snapshotsSerializer, snapshots)
         return buildString {
             appendLine("Current time: $now")
-            appendLine("Time zone: $timeZone")
+            appendLine("Time zone: $timeZone ($offset)")
             appendLine()
             appendLine("Existing Qs (id + text only; tags and alarms not shown):")
             appendLine(snapshotsJson)
@@ -77,6 +79,7 @@ class LlmPromptBuilder(
 
             Rules:
             - Resolve relative times with the given now+tz.
+            - Emit "at" in the given tz as ISO-8601 with offset, not UTC. Example: user says "5pm" with offset 03:00 → "17:00:00-03:00".
             - Use "answer" for questions about Qs.
             - Reference only ids shown; on update, omit unchanged fields.
 
