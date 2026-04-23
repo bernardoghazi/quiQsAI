@@ -7,6 +7,7 @@ import com.quiqs.shared.Q
 import kotlinx.datetime.Instant
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.offsetAt
+import kotlinx.datetime.toLocalDateTime
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlin.uuid.ExperimentalUuidApi
@@ -113,9 +114,10 @@ class LlmPromptBuilder(
     private inline fun buildBase(userSection: StringBuilder.() -> Unit): String {
         val now = clock()
         val offset = timeZone.offsetAt(now)
+        val localNow = now.toLocalDateTime(timeZone)
         return buildString {
-            appendLine("Current time: $now")
-            appendLine("Time zone: $timeZone ($offset)")
+            appendLine("Current time: $localNow$offset")
+            appendLine("Time zone: $timeZone")
             appendLine()
             userSection()
         }
