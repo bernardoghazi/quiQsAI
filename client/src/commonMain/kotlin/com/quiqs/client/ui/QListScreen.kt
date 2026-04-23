@@ -27,6 +27,16 @@ import kotlinx.datetime.toLocalDateTime
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
+/**
+ * Landing screen — lists every stored Q and exposes the entry points for creating a new
+ * Q (FAB), opening one ([onOpenQ]), or asking a question about them ([onQueryQs]).
+ *
+ * Subscribes to [QRepository.observeAll], so insertions/deletions re-render automatically.
+ *
+ * @param onAddQ Triggered by the `+` FAB — callers route to the prompt screen in Create mode.
+ * @param onOpenQ Triggered by tapping a list item.
+ * @param onQueryQs Triggered by the top-bar "Query" action — callers route to the prompt screen in Query mode.
+ */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalUuidApi::class)
 @Composable
 fun QListScreen(
@@ -74,6 +84,7 @@ fun QListScreen(
     }
 }
 
+/** One-line summary shown under each Q's title in the list. */
 private fun Alarm.shortLabel(): String = when (this) {
     is Alarm.OneOffTime -> {
         val local = at.toLocalDateTime(TimeZone.currentSystemDefault())

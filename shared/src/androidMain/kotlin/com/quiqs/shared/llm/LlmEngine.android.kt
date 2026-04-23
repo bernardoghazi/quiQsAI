@@ -17,6 +17,16 @@ import kotlinx.serialization.json.put
 
 private val toolDescriptionJson = Json { encodeDefaults = true }
 
+/**
+ * Android [LlmEngine] backed by LiteRT-LM running Gemma 4 E2B on the device's GPU.
+ *
+ * Engine configuration:
+ *  - GPU text backend + CPU audio backend (E2B is multimodal).
+ *  - Deterministic sampling (`topK=1, topP=1.0, temperature=0.0`) so identical prompts
+ *    yield identical JSON commands — important for parse reliability.
+ *  - `maxNumTokens = 4096`, which is why [LlmPromptBuilder] splits system prompts per
+ *    mode instead of stuffing everything up front.
+ */
 private class LiteRtLmEngine(modelPath: String, cacheDir: String?) : LlmEngine {
 
     private val engine: Engine = Engine(
@@ -49,6 +59,8 @@ private class LiteRtLmEngine(modelPath: String, cacheDir: String?) : LlmEngine {
             }
             val buffer = StringBuilder()
             val tracker = JsonBalanceTracker()
+            // Stop collecting as soon as the top-level JSON object closes — trailing
+            // model commentary is wasted decode and delays user-visible results.
             conversation.sendMessageAsync(contents).transformWhile { chunk ->
                     val piece = chunk.toString()
                     emit(piece)
@@ -66,6 +78,14 @@ private class LiteRtLmEngine(modelPath: String, cacheDir: String?) : LlmEngine {
     }
 }
 
+/**
+ * Bridges a common-module [LlmTool] to LiteRT-LM's [OpenApiTool].
+ *
+ * The LiteRT-LM API takes a single JSON description string containing name, description
+ * and the parameter schema. [runBlocking] bridges the suspend `execute` contract to the
+ * synchronous [OpenApiTool.execute] callback the runtime uses when dispatching tool
+ * calls automatically.
+ */
 private fun LlmTool.toOpenApiTool(): OpenApiTool {
     val tool = this
     val descriptionJson = buildJsonObject {

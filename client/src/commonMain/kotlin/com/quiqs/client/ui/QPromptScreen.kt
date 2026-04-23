@@ -40,6 +40,18 @@ import kotlin.time.TimeSource
 import kotlin.uuid.ExperimentalUuidApi
 import kotlinx.coroutines.launch
 
+/**
+ * The LLM prompt screen shared by create/edit/query modes.
+ *
+ * Renders a single text field plus Send and Record buttons. On send, dispatches to the
+ * appropriate `QAgent.*FromText` / `*FromVoice` method based on [mode]. While the model
+ * streams, it shows the raw partial output in a monospace block and records timing
+ * (TTFT, total duration, chunk count, decode rate) to display under the answer.
+ *
+ * @param agentProvider Lazy source of a [QAgent] — resolved once per composition.
+ * @param recorderProvider Lazy source of an [AudioRecorder] — resolved on first tap of
+ *   the Record button so the permission prompt doesn't fire on screen entry.
+ */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalUuidApi::class)
 @Composable
 fun QPromptScreen(
@@ -74,6 +86,11 @@ fun QPromptScreen(
         }
     }
 
+    /**
+     * Runs a single [QAgent] call with common UI bookkeeping: resets status, measures
+     * TTFT/total duration, and surfaces either a success message or parse-failure
+     * debugging output. [block] picks the mode-specific agent method to invoke.
+     */
     suspend fun runOutcome(block: suspend QAgent.((String) -> Unit) -> QAgentOutcome) {
         val a = agent ?: return
         busy = true
@@ -215,6 +232,9 @@ fun QPromptScreen(
                     }
                     lastDuration?.let { total ->
                         val ttft = timeToFirstChunk
+                        // Decode rate = chunks after the first / time spent decoding
+                        // them. Scaled ×10 then split to format as "N.N chunk/s" without
+                        // relying on platform-specific float formatters.
                         val decode = if (ttft != null && chunkCount > 1) {
                             val decodeMs = (total - ttft).inWholeMilliseconds.coerceAtLeast(1)
                             val rateTimes10 = ((chunkCount - 1) * 10_000 / decodeMs).toInt()

@@ -37,6 +37,17 @@ import kotlin.time.ExperimentalTime
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
+/**
+ * Manual-edit screen for a single Q.
+ *
+ * Doubles as the "create new" screen when [qId] is `null` — in that mode only the text
+ * field and Save button render. When a [qId] is supplied, the screen subscribes to
+ * [QRepository.observeById], shows tags/alarms/timestamps, and adds Edit-with-AI and
+ * Delete actions.
+ *
+ * @param onEditWithAi Invoked when the user wants to edit this Q via the LLM prompt
+ *   screen. Only relevant when [qId] is non-null.
+ */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalUuidApi::class)
 @Composable
 fun QDetailScreen(
@@ -52,6 +63,7 @@ fun QDetailScreen(
     val existing by flow.collectAsState(initial = null)
 
     var text by remember(qId) { mutableStateOf("") }
+    // Gate first-load seeding so user edits aren't overwritten by later observer emissions.
     var initialized by remember(qId) { mutableStateOf(qId == null) }
     LaunchedEffect(existing) {
         val loaded = existing
@@ -121,6 +133,7 @@ fun QDetailScreen(
     }
 }
 
+/** Verbose, debug-friendly alarm description (shown as a bullet in the Alarms section). */
 @OptIn(ExperimentalTime::class)
 private fun Alarm.describe(): String = when (this) {
     is Alarm.OneOffTime -> "One-off @ ${at.toLocalDisplay()} (raw: $at)"
@@ -128,6 +141,7 @@ private fun Alarm.describe(): String = when (this) {
     is Alarm.Geofence -> "Geofence ${latitude}, ${longitude} (${radiusMeters}m)"
 }
 
+/** Formats an instant using the device's local time zone as `YYYY-MM-DD HH:MM`. */
 @OptIn(ExperimentalTime::class)
 private fun kotlinx.datetime.Instant.toLocalDisplay(): String {
     val local = toLocalDateTime(TimeZone.currentSystemDefault())

@@ -19,22 +19,44 @@ import kotlinx.serialization.json.Json
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
+/**
+ * Persistent store for [Q]s.
+ *
+ * Observers (`observeAll`/`observeById`) emit on every write, so UI layers can subscribe
+ * once and react to mutations without re-querying.
+ */
 interface QRepository {
+    /** Emits the full list of Qs on every change. */
     fun observeAll(): Flow<List<Q>>
+
+    /** Emits the Q with [id] on every change, or `null` once after it is deleted. */
     fun observeById(id: Uuid): Flow<Q?>
+
+    /** One-shot read of all Qs. Prefer [observeAll] in UI code. */
     suspend fun getAll(): List<Q>
+
+    /** One-shot read of a single Q, or `null` if no row matches [id]. */
     suspend fun getById(id: Uuid): Q?
+
+    /** Inserts a new Q with a fresh random UUID and `createdAt == updatedAt == now`. */
     suspend fun create(
         text: String,
         tags: List<String> = emptyList(),
         alarms: List<Alarm> = emptyList(),
     ): Q
+
+    /**
+     * Partially updates an existing Q. Any argument left `null` keeps the stored value.
+     * Returns the updated [Q], or `null` if no row with [id] exists.
+     */
     suspend fun update(
         id: Uuid,
         text: String? = null,
         tags: List<String>? = null,
         alarms: List<Alarm>? = null,
     ): Q?
+
+    /** Deletes the row with [id]. No-op if the row does not exist. */
     suspend fun delete(id: Uuid)
 }
 
@@ -46,6 +68,12 @@ private val json = Json {
 private val tagsSerializer = ListSerializer(String.serializer())
 private val alarmsSerializer = ListSerializer(Alarm.serializer())
 
+/**
+ * SQLDelight-backed [QRepository] used on every target (Android, iOS, desktop).
+ *
+ * Storage shape: each Q is a single row; [Q.tags] and [Q.alarms] are stored as
+ * JSON strings so schema changes to those shapes don't require migrations.
+ */
 class SqlDelightQRepository(driver: SqlDriver) : QRepository {
 
     private val db = QDatabase(driver)
@@ -120,6 +148,7 @@ class SqlDelightQRepository(driver: SqlDriver) : QRepository {
         queries.deleteById(id.toString())
     }
 
+    /** Maps a raw SQLDelight row to the domain [Q], decoding the JSON-encoded columns. */
     private fun toDomain(row: QEntity): Q = Q(
         id = Uuid.parse(row.id),
         text = row.text,

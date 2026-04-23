@@ -8,6 +8,16 @@ import kotlinx.coroutines.withContext
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
+/**
+ * Orchestrates the end-to-end LLM round trip for one user action.
+ *
+ * Pipeline: pick the right system + user prompt for the mode → call [engine].generate →
+ * pass the raw output to [parser] → apply the resulting [QCommand] through [dispatcher].
+ *
+ * Exposes six top-level methods — one per `(mode × input channel)` cell (create, edit,
+ * query) × (text, voice). Each wraps the same private [run] helper with the right prompt
+ * and tool set.
+ */
 class QAgent(
     private val engine: LlmEngine,
     private val repository: QRepository,
@@ -15,6 +25,7 @@ class QAgent(
     private val parser: LlmCommandParser = LlmCommandParser(),
     private val dispatcher: QCommandDispatcher = QCommandDispatcher(repository),
 ) {
+    /** Create a new Q from a typed prompt. */
     suspend fun createFromText(prompt: String, onChunk: (String) -> Unit = {}): QAgentOutcome =
         run(
             prompt = promptBuilder.buildForCreate(prompt),
@@ -23,6 +34,7 @@ class QAgent(
             onChunk = onChunk,
         )
 
+    /** Create a new Q from a recorded audio prompt. */
     suspend fun createFromVoice(audioPath: String, onChunk: (String) -> Unit = {}): QAgentOutcome =
         run(
             prompt = promptBuilder.buildForCreateAudio(),
@@ -31,6 +43,10 @@ class QAgent(
             onChunk = onChunk,
         )
 
+    /**
+     * Edit an existing Q from a typed prompt. Fails fast with [QAgentOutcome.ParseFailed]
+     * if [qId] does not resolve to a stored Q.
+     */
     suspend fun editFromText(qId: Uuid, prompt: String, onChunk: (String) -> Unit = {}): QAgentOutcome {
         val q = repository.getById(qId)
             ?: return QAgentOutcome.ParseFailed(raw = "", reason = "No Q with id $qId")
@@ -42,6 +58,7 @@ class QAgent(
         )
     }
 
+    /** Edit an existing Q from a recorded audio prompt. See [editFromText]. */
     suspend fun editFromVoice(qId: Uuid, audioPath: String, onChunk: (String) -> Unit = {}): QAgentOutcome {
         val q = repository.getById(qId)
             ?: return QAgentOutcome.ParseFailed(raw = "", reason = "No Q with id $qId")
@@ -53,6 +70,10 @@ class QAgent(
         )
     }
 
+    /**
+     * Answer a user question about their Qs, fetching data on demand via the query
+     * tools instead of stuffing the Q list into the system prompt.
+     */
     suspend fun queryFromText(prompt: String, onChunk: (String) -> Unit = {}): QAgentOutcome =
         run(
             prompt = promptBuilder.buildForQuery(prompt),
@@ -62,6 +83,7 @@ class QAgent(
             onChunk = onChunk,
         )
 
+    /** Voice variant of [queryFromText]. */
     suspend fun queryFromVoice(audioPath: String, onChunk: (String) -> Unit = {}): QAgentOutcome =
         run(
             prompt = promptBuilder.buildForQueryAudio(),
@@ -71,6 +93,11 @@ class QAgent(
             onChunk = onChunk,
         )
 
+    /**
+     * Drives one end-to-end LLM turn off the main thread. Runs inference, parses the
+     * output, and dispatches the resulting command. Parse failures are surfaced as
+     * [QAgentOutcome.ParseFailed] — callers can show the raw output for debugging.
+     */
     private suspend fun run(
         prompt: String,
         systemInstruction: String,
@@ -94,7 +121,10 @@ class QAgent(
         }
 }
 
+/** Result of a single [QAgent] invocation. */
 sealed interface QAgentOutcome {
+    /** The model returned a valid [QCommand] and the dispatcher applied it. */
     data class Handled(val command: QCommand, val result: QCommandResult, val raw: String) : QAgentOutcome
+    /** The model's output could not be parsed into a [QCommand]. [raw] preserves it for diagnostics. */
     data class ParseFailed(val raw: String, val reason: String) : QAgentOutcome
 }

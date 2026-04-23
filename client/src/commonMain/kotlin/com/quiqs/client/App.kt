@@ -13,6 +13,15 @@ import com.quiqs.client.ui.QListScreen
 import com.quiqs.client.ui.QPromptScreen
 import com.quiqs.shared.QRepository
 
+/**
+ * Composable entry point shared by every platform launcher (Android activity, desktop
+ * window, iOS view controller).
+ *
+ * Routing is intentionally trivial — a single `mutableStateOf<Route>` flips between the
+ * three screens. LLM and audio dependencies are injected via [agentProvider] /
+ * [recorderProvider]; targets without those capabilities pass the `NoAgent` / `NoRecorder`
+ * stubs and the prompt screen surfaces a friendly unavailable message.
+ */
 @Composable
 fun App(
     repository: QRepository,

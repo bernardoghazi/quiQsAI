@@ -13,6 +13,18 @@ private val toolJson = Json {
 
 private val fullSnapshotsSerializer = ListSerializer(QFullSnapshot.serializer())
 
+/**
+ * Tool set exposed to query-mode prompts.
+ *
+ * The model calls these to fetch Qs on demand instead of receiving the full list up
+ * front in the system prompt — the list can easily exceed the 4096-token context
+ * window. Each tool logs entry and result size via `println` so `logcat` shows which
+ * tool the model chose for a given prompt.
+ *
+ * Tools:
+ *  - `search_qs(query)` — case-insensitive substring match against text and tags.
+ *  - `list_all_qs()` — returns every Q; used for aggregate questions (e.g. counts).
+ */
 fun queryToolsFor(repository: QRepository): List<LlmTool> = listOf(
     LlmTool(
         name = "search_qs",

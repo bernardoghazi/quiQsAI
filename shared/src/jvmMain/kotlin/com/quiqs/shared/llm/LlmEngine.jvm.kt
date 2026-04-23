@@ -6,6 +6,13 @@ import com.google.ai.edge.litertlm.Engine
 import com.google.ai.edge.litertlm.EngineConfig
 import kotlinx.coroutines.flow.collect
 
+/**
+ * Desktop-JVM [LlmEngine] backed by LiteRT-LM.
+ *
+ * Kept minimal on purpose — tool use isn't wired up here and the audio backend uses
+ * defaults. The Android actual is where the production configuration lives; this one
+ * exists so desktop builds and tests compile against the same interface.
+ */
 private class LiteRtLmEngine(modelPath: String, cacheDir: String?) : LlmEngine {
 
     private val engine: Engine = Engine(

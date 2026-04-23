@@ -8,8 +8,19 @@ import androidx.activity.result.contract.ActivityResultContracts
 import com.quiqs.client.audio.createRecorderProvider
 import kotlinx.coroutines.CompletableDeferred
 
+/**
+ * Android entry point.
+ *
+ * Wires up the shared [App] with Android-specific providers for persistence, the LLM
+ * engine, and the microphone. Permission prompts are bridged to suspending code via
+ * [CompletableDeferred] so callers can `await()` the user's choice.
+ *
+ * Releases the cached LLM engine on finishing destruction to free GPU resources —
+ * recreations are cheap compared to holding it across a kill.
+ */
 class MainActivity : ComponentActivity() {
 
+    /** Outstanding permission request — completed by [permissionLauncher] on user response. */
     private var pendingPermission: CompletableDeferred<Boolean>? = null
 
     private val permissionLauncher = registerForActivityResult(

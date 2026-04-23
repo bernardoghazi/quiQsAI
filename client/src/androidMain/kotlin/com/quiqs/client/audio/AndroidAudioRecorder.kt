@@ -23,12 +23,17 @@ import java.io.RandomAccessFile
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
+/** 16 kHz mono PCM-16 — chosen to match what Gemma 4 E2B's audio front-end expects. */
 private const val SAMPLE_RATE = 16_000
 private const val CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO
 private const val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
 private const val BITS_PER_SAMPLE = 16
 private const val CHANNELS = 1
 
+/**
+ * Builds an Android [RecorderProvider] that checks RECORD_AUDIO, delegating the prompt
+ * to [requestPermission] when needed.
+ */
 fun createRecorderProvider(
     context: Context,
     requestPermission: suspend () -> Boolean,
@@ -47,6 +52,14 @@ private fun hasPermission(context: Context): Boolean =
     context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) ==
         PackageManager.PERMISSION_GRANTED
 
+/**
+ * Writes mic audio to a WAV file in the app's cache directory.
+ *
+ * [start] spins up a background coroutine that streams PCM samples to disk with a
+ * zero-length WAV header; [stop] finalises the file by seeking back and patching the
+ * header with the actual byte counts. The returned path is handed to the LLM engine as
+ * the audio attachment.
+ */
 private class AndroidAudioRecorder(private val context: Context) : AudioRecorder {
 
     private val mutex = Mutex()
@@ -100,6 +113,11 @@ private class AndroidAudioRecorder(private val context: Context) : AudioRecorder
         file?.delete()
     }
 
+    /**
+     * Streams PCM samples into [file] until the coroutine is cancelled. Writes a
+     * placeholder WAV header first so the file is a valid structure even if the
+     * process dies mid-recording; [patchWavHeader] fills in the real sizes at stop.
+     */
     private suspend fun writePcmToWav(rec: AudioRecord, file: File, bufferSize: Int) {
         withContext(Dispatchers.IO) {
             FileOutputStream(file).use { fos ->
@@ -117,6 +135,7 @@ private class AndroidAudioRecorder(private val context: Context) : AudioRecorder
         }
     }
 
+    /** Writes the 44-byte RIFF/WAVE header. [dataSize] is the bytes of PCM that follow. */
     private fun writeWavHeader(out: DataOutputStream, dataSize: Int) {
         val byteRate = SAMPLE_RATE * CHANNELS * BITS_PER_SAMPLE / 8
         val blockAlign = CHANNELS * BITS_PER_SAMPLE / 8
@@ -136,6 +155,7 @@ private class AndroidAudioRecorder(private val context: Context) : AudioRecorder
         out.writeIntLe(dataSize)
     }
 
+    /** Fills in the RIFF chunk size (offset 4) and data chunk size (offset 40) post-hoc. */
     private fun patchWavHeader(file: File) {
         val totalLen = file.length().toInt()
         val dataLen = totalLen - 44
