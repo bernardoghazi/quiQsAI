@@ -33,7 +33,6 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
-import kotlin.time.ExperimentalTime
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
@@ -136,7 +135,6 @@ fun QDetailScreen(
 }
 
 /** Verbose, debug-friendly alarm description (shown as a bullet in the Alarms section). */
-@OptIn(ExperimentalTime::class)
 private fun Alarm.describe(): String = when (this) {
     is Alarm.OneOffTime -> "One-off @ ${at.toLocalDisplay()} (raw: $at)"
     is Alarm.RecurringTime -> "Recurring: $rule" + (until?.let { ", until ${it.toLocalDisplay()}" } ?: "")
@@ -144,8 +142,7 @@ private fun Alarm.describe(): String = when (this) {
 }
 
 /** Formats an instant using the device's local time zone as `YYYY-MM-DD HH:MM`. */
-@OptIn(ExperimentalTime::class)
-private fun kotlinx.datetime.Instant.toLocalDisplay(): String {
+private fun kotlin.time.Instant.toLocalDisplay(): String {
     val local = toLocalDateTime(TimeZone.currentSystemDefault())
     return "${local.date} ${local.hour.pad()}:${local.minute.pad()}"
 }

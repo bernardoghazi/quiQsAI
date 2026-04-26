@@ -14,9 +14,10 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.unit.dp
 import com.quiqs.shared.Alarm
-import kotlinx.datetime.Clock
+import com.quiqs.shared.nextRecurringInstant
+import kotlin.time.Clock
+import kotlin.time.Instant
 import kotlinx.datetime.DayOfWeek
-import kotlinx.datetime.Instant
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.Month
 import kotlinx.datetime.TimeZone
@@ -49,10 +50,18 @@ fun QAlarmLabel(
     }
 }
 
-/** Renders the alarm as the same kind of short label the list cell uses. */
+/**
+ * Renders the alarm as the same kind of short label the list cell uses. For recurring
+ * alarms we show the next firing time only — the repeat icon next to it conveys that the
+ * alarm recurs. Falls back to the raw rule string if we can't compute a next instant.
+ */
 private fun Alarm.formatLabel(): String = when (this) {
     is Alarm.OneOffTime -> formatRelativeDateTime(at)
-    is Alarm.RecurringTime -> rule
+    is Alarm.RecurringTime -> {
+        val tz = TimeZone.currentSystemDefault()
+        val next = nextRecurringInstant(rule, Clock.System.now(), tz)
+        if (next != null) formatRelativeDateTime(next) else rule
+    }
     is Alarm.Geofence -> "Near $latitude, $longitude"
 }
 
@@ -71,11 +80,11 @@ private fun formatRelativeDateTime(at: Instant): String {
 
     val time = formatTime12h(atLocal)
     val datePart = when {
-        daysDiff == 0 -> "Today"
-        daysDiff == 1 -> "Tomorrow"
-        daysDiff in 2..6 -> "${atLocal.dayOfWeek.shortLabel()}, ${atLocal.month.shortLabel()} ${atLocal.dayOfMonth}"
-        atLocal.year == nowLocal.year -> "${atLocal.month.shortLabel()} ${atLocal.dayOfMonth}"
-        else -> "${atLocal.month.shortLabel()} ${atLocal.dayOfMonth}, ${atLocal.year}"
+        daysDiff == 0L -> "Today"
+        daysDiff == 1L -> "Tomorrow"
+        daysDiff in 2L..6L -> "${atLocal.dayOfWeek.shortLabel()}, ${atLocal.month.shortLabel()} ${atLocal.day}"
+        atLocal.year == nowLocal.year -> "${atLocal.month.shortLabel()} ${atLocal.day}"
+        else -> "${atLocal.month.shortLabel()} ${atLocal.day}, ${atLocal.year}"
     }
     return "$datePart, $time"
 }

@@ -5,7 +5,7 @@ package com.quiqs.shared.llm
 import com.quiqs.shared.Alarm
 import com.quiqs.shared.Priority
 import com.quiqs.shared.Q
-import kotlinx.datetime.Instant
+import kotlin.time.Instant
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.offsetAt
 import kotlinx.datetime.toLocalDateTime
@@ -50,7 +50,7 @@ private val promptJson = Json {
  * monolithic instruction — each mode only gets the rules and examples relevant to it,
  * keeping prefill cost well under the model's 4096-token context window.
  *
- * @property clock Injectable time source — tests can freeze time without stubbing [kotlinx.datetime.Clock].
+ * @property clock Injectable time source — tests can freeze time without stubbing [kotlin.time.Clock].
  * @property timeZone Zone used to format the alarm offsets in the user's locale.
  */
 class LlmPromptBuilder(
