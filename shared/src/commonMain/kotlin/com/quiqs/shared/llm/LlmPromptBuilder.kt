@@ -66,6 +66,9 @@ class LlmPromptBuilder(
     /** System instruction for query-mode prompts (includes the tool contract). */
     val systemForQuery: String get() = SYSTEM_QUERY
 
+    /** System instruction for filter/sort-mode prompts. */
+    val systemForFilterSort: String get() = SYSTEM_FILTER_SORT
+
     /** Build the user prompt for creating a Q from typed text. */
     fun buildForCreate(userPrompt: String): String =
         buildBase {
@@ -107,6 +110,19 @@ class LlmPromptBuilder(
 
     /** Build the user prompt for querying Qs from audio. */
     fun buildForQueryAudio(): String =
+        buildBase {
+            appendLine(AUDIO_INSTRUCTION)
+        }
+
+    /** Build the user prompt for translating natural language into a filter+sort spec. */
+    fun buildForFilterSort(userPrompt: String): String =
+        buildBase {
+            appendLine("User prompt:")
+            appendLine(userPrompt)
+        }
+
+    /** Build the user prompt for filter+sort from audio. */
+    fun buildForFilterSortAudio(): String =
         buildBase {
             appendLine(AUDIO_INSTRUCTION)
         }
@@ -198,6 +214,60 @@ class LlmPromptBuilder(
             - Do not translate the user's language in "text".
             - Use the id from "Q being edited".
             - On update, omit unchanged fields.
+        """.trimIndent()
+
+        private val SYSTEM_FILTER_SORT = """
+            $BASE
+
+            Command:
+              {"type":"filterSort","spec":{
+                "text": <string|null>,
+                "tags": [<string>...],
+                "priorities": [<"high"|"medium"|"low">...],
+                "alarm": <"any"|"none"|"any_set"|"recurring"|"one_off"|"geofence">,
+                "completed": <"any"|"only_open"|"only_done">,
+                "sortBy": <"tags"|"priority"|"created_at"|"updated_at"|"alarm">,
+                "sortDir": <"asc"|"desc">
+              }}
+
+            Defaults: text=null, tags=[], priorities=[], alarm="any", completed="only_open",
+            sortBy="created_at", sortDir="desc". Omit fields the user did not mention.
+
+            Field meaning:
+            - text: case-insensitive substring matched against Q text.
+            - tags: only Qs whose tags contain at least one of these (case-insensitive).
+            - priorities: only Qs whose priority is in the list.
+            - alarm: filter by alarm shape (any=no filter, none=no alarms, any_set=has alarms,
+              recurring/one_off/geofence=has that kind).
+            - completed: only_open hides done Qs; only_done shows only done Qs; any=both.
+            - sortBy + sortDir: deterministic ordering.
+
+            Mapping rules:
+            - "high priority" / "urgent" → priorities=["high"]
+            - "completed" / "done" → completed="only_done"
+            - "open" / "not done" / "todo" → completed="only_open"
+            - "no alarms" → alarm="none"; "with alarms" → alarm="any_set"
+            - "recurring" → alarm="recurring"; "one-off" → alarm="one_off"
+            - "next alarm" / "upcoming" / "soonest" → sortBy="alarm", sortDir="asc"
+            - "newest first" → sortBy="created_at", sortDir="desc"
+            - "oldest first" → sortBy="created_at", sortDir="asc"
+            - "recently edited" → sortBy="updated_at", sortDir="desc"
+            - "by priority" → sortBy="priority", sortDir="asc" (high first)
+            - "by tag" / "group by tag" → sortBy="tags", sortDir="asc"
+            - "clear" / "reset" → emit empty spec {} to restore defaults
+
+            Examples:
+              "show high priority groceries Qs"
+              → {"type":"filterSort","spec":{"tags":["groceries"],"priorities":["high"]}}
+
+              "sort by next alarm"
+              → {"type":"filterSort","spec":{"sortBy":"alarm","sortDir":"asc"}}
+
+              "filter only completed work tasks, newest first"
+              → {"type":"filterSort","spec":{"tags":["work"],"completed":"only_done","sortBy":"created_at","sortDir":"desc"}}
+
+              "clear filters"
+              → {"type":"filterSort","spec":{}}
         """.trimIndent()
 
         private val SYSTEM_QUERY = """

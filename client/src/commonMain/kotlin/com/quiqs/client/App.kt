@@ -11,6 +11,7 @@ import com.quiqs.client.audio.RecorderProvider
 import com.quiqs.client.ui.QDetailScreen
 import com.quiqs.client.ui.QListScreen
 import com.quiqs.client.ui.QPromptScreen
+import com.quiqs.shared.QFilterSort
 import com.quiqs.shared.QRepository
 
 /**
@@ -29,13 +30,17 @@ fun App(
     recorderProvider: RecorderProvider = NoRecorder,
 ) {
     var route by remember { mutableStateOf<Route>(Route.List) }
+    var filterSort by remember { mutableStateOf(QFilterSort()) }
     MaterialTheme {
         when (val current = route) {
             is Route.List -> QListScreen(
                 repository = repository,
+                filterSort = filterSort,
                 onAddQ = { route = Route.Prompt(PromptMode.Create) },
                 onOpenQ = { id -> route = Route.Detail(id = id) },
                 onQueryQs = { route = Route.Prompt(PromptMode.Query) },
+                onFilterSort = { route = Route.Prompt(PromptMode.FilterSort) },
+                onClearFilterSort = { filterSort = QFilterSort() },
             )
             is Route.Detail -> QDetailScreen(
                 repository = repository,
@@ -48,6 +53,10 @@ fun App(
                 recorderProvider = recorderProvider,
                 mode = current.mode,
                 onBack = { route = Route.List },
+                onFilterSortApplied = { spec ->
+                    filterSort = spec
+                    route = Route.List
+                },
             )
         }
     }

@@ -33,8 +33,10 @@ import com.quiqs.client.PromptMode
 import com.quiqs.client.audio.AudioRecorder
 import com.quiqs.client.audio.RecorderProvider
 import com.quiqs.client.audio.RecorderStatus
+import com.quiqs.shared.QFilterSort
 import com.quiqs.shared.llm.QAgent
 import com.quiqs.shared.llm.QAgentOutcome
+import com.quiqs.shared.llm.QCommandResult
 import kotlin.time.Duration
 import kotlin.time.TimeSource
 import kotlin.uuid.ExperimentalUuidApi
@@ -59,6 +61,7 @@ fun QPromptScreen(
     recorderProvider: RecorderProvider,
     mode: PromptMode,
     onBack: () -> Unit,
+    onFilterSortApplied: (QFilterSort) -> Unit = {},
 ) {
     var agent by remember { mutableStateOf<QAgent?>(null) }
     var agentError by remember { mutableStateOf<String?>(null) }
@@ -112,6 +115,12 @@ fun QPromptScreen(
                     is QAgentOutcome.Handled -> {
                         status = outcome.result.message
                         rawOutput = outcome.raw
+                        // Filter/sort produces a spec, not a state mutation — hand it
+                        // back to the caller and pop the screen so the list reflects it.
+                        val res = outcome.result
+                        if (res is QCommandResult.FilterSorted) {
+                            onFilterSortApplied(res.spec)
+                        }
                     }
                     is QAgentOutcome.ParseFailed -> {
                         status = "Couldn't parse LLM output: ${outcome.reason}"
@@ -127,11 +136,13 @@ fun QPromptScreen(
     val title = when (mode) {
         PromptMode.Create -> "Add Q"
         PromptMode.Query -> "Query Qs"
+        PromptMode.FilterSort -> "Filter & sort"
         is PromptMode.Edit -> "Edit Q"
     }
     val placeholder = when (mode) {
         PromptMode.Create -> "What should I remind you of?"
         PromptMode.Query -> "Ask about your Qs"
+        PromptMode.FilterSort -> "How should I filter/sort the list?"
         is PromptMode.Edit -> "Describe the change"
     }
 
@@ -173,6 +184,7 @@ fun QPromptScreen(
                                         when (mode) {
                                             PromptMode.Create -> createFromText(p, cb)
                                             PromptMode.Query -> queryFromText(p, cb)
+                                            PromptMode.FilterSort -> filterSortFromText(p, cb)
                                             is PromptMode.Edit -> editFromText(mode.qId, p, cb)
                                         }
                                     }
@@ -217,6 +229,7 @@ fun QPromptScreen(
                                             when (mode) {
                                                 PromptMode.Create -> createFromVoice(path, cb)
                                                 PromptMode.Query -> queryFromVoice(path, cb)
+                                                PromptMode.FilterSort -> filterSortFromVoice(path, cb)
                                                 is PromptMode.Edit -> editFromVoice(mode.qId, path, cb)
                                             }
                                         }

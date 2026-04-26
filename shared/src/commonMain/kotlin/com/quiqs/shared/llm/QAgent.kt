@@ -93,6 +93,24 @@ class QAgent(
             onChunk = onChunk,
         )
 
+    /** Translate a natural-language filter/sort request into a [QCommand.FilterSort]. */
+    suspend fun filterSortFromText(prompt: String, onChunk: (String) -> Unit = {}): QAgentOutcome =
+        run(
+            prompt = promptBuilder.buildForFilterSort(prompt),
+            systemInstruction = promptBuilder.systemForFilterSort,
+            audioPath = null,
+            onChunk = onChunk,
+        )
+
+    /** Voice variant of [filterSortFromText]. */
+    suspend fun filterSortFromVoice(audioPath: String, onChunk: (String) -> Unit = {}): QAgentOutcome =
+        run(
+            prompt = promptBuilder.buildForFilterSortAudio(),
+            systemInstruction = promptBuilder.systemForFilterSort,
+            audioPath = audioPath,
+            onChunk = onChunk,
+        )
+
     /**
      * Drives one end-to-end LLM turn off the main thread. Runs inference, parses the
      * output, and dispatches the resulting command. Parse failures are surfaced as

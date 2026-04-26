@@ -2,6 +2,7 @@
 
 package com.quiqs.shared.llm
 
+import com.quiqs.shared.QFilterSort
 import com.quiqs.shared.QRepository
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -25,6 +26,9 @@ sealed interface QCommandResult {
 
     /** Returned by [QCommand.Answer] — wraps the model's free-text response. */
     data class Answered(override val message: String) : QCommandResult
+
+    /** Returned by [QCommand.FilterSort] — read-only, carries the spec back to the UI. */
+    data class FilterSorted(val spec: QFilterSort, override val message: String) : QCommandResult
 
     /** Catch-all for invalid ids or writes that couldn't be applied. */
     data class Failed(override val message: String) : QCommandResult
@@ -69,6 +73,21 @@ class QCommandDispatcher(private val repository: QRepository) {
             QCommandResult.Deleted(id, "Deleted $id")
         }
         is QCommand.Answer -> QCommandResult.Answered(command.text)
+        is QCommand.FilterSort -> QCommandResult.FilterSorted(command.spec, describe(command.spec))
+    }
+
+    /** Short human-readable summary of [spec] used as the dispatcher's status message. */
+    private fun describe(spec: QFilterSort): String {
+        if (spec.isDefault) return "Cleared filter & sort"
+        val parts = buildList {
+            spec.text?.takeIf { it.isNotBlank() }?.let { add("text~“${it}”") }
+            if (spec.tags.isNotEmpty()) add("tags=${spec.tags.joinToString(",")}")
+            if (spec.priorities.isNotEmpty()) add("priority=${spec.priorities.joinToString(",") { it.wire }}")
+            if (spec.alarm != QFilterSort.AlarmFilter.ANY) add("alarm=${spec.alarm.name.lowercase()}")
+            if (spec.completed != QFilterSort.CompletedFilter.ANY) add("completed=${spec.completed.name.lowercase()}")
+            add("sort=${spec.sortBy.name.lowercase()} ${spec.sortDir.name.lowercase()}")
+        }
+        return "Applied: ${parts.joinToString(", ")}"
     }
 
     /** Parses a UUID string, returning `null` for malformed input (model hallucination guard). */

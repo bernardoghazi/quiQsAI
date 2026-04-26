@@ -2,6 +2,7 @@ package com.quiqs.shared.llm
 
 import com.quiqs.shared.Alarm
 import com.quiqs.shared.Priority
+import com.quiqs.shared.QFilterSort
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -57,4 +58,13 @@ sealed interface QCommand {
     @Serializable
     @SerialName("answer")
     data class Answer(val text: String) : QCommand
+
+    /**
+     * Apply a filter+sort projection to the Q list. Read-only — the dispatcher hands
+     * the spec back to the caller (see `QCommandResult.FilterSorted`) instead of
+     * mutating any persisted state.
+     */
+    @Serializable
+    @SerialName("filterSort")
+    data class FilterSort(val spec: QFilterSort) : QCommand
 }

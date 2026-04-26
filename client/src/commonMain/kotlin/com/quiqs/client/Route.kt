@@ -43,4 +43,10 @@ sealed interface PromptMode {
 
     /** Ask a question about the user's Qs (read-only, uses query tools). */
     data object Query : PromptMode
+
+    /**
+     * Translate natural language into a [com.quiqs.shared.QFilterSort] spec applied to
+     * the list screen. Read-only — no repository writes happen in this mode.
+     */
+    data object FilterSort : PromptMode
 }
