@@ -44,6 +44,7 @@ interface QRepository {
         tags: List<String> = emptyList(),
         alarms: List<Alarm> = emptyList(),
         priority: Priority = Priority.MEDIUM,
+        completed: Boolean = false,
     ): Q
 
     /**
@@ -56,6 +57,7 @@ interface QRepository {
         tags: List<String>? = null,
         alarms: List<Alarm>? = null,
         priority: Priority? = null,
+        completed: Boolean? = null,
     ): Q?
 
     /** Deletes the row with [id]. No-op if the row does not exist. */
@@ -97,7 +99,13 @@ class SqlDelightQRepository(driver: SqlDriver) : QRepository {
     override suspend fun getById(id: Uuid): Q? =
         queries.selectById(id.toString()).executeAsOneOrNull()?.let(::toDomain)
 
-    override suspend fun create(text: String, tags: List<String>, alarms: List<Alarm>, priority: Priority): Q {
+    override suspend fun create(
+        text: String,
+        tags: List<String>,
+        alarms: List<Alarm>,
+        priority: Priority,
+        completed: Boolean,
+    ): Q {
         val now = Clock.System.now()
         val q = Q(
             id = Uuid.random(),
@@ -105,6 +113,7 @@ class SqlDelightQRepository(driver: SqlDriver) : QRepository {
             tags = tags,
             alarms = alarms,
             priority = priority,
+            completed = completed,
             createdAt = now,
             updatedAt = now,
         )
@@ -114,6 +123,7 @@ class SqlDelightQRepository(driver: SqlDriver) : QRepository {
             tagsJson = json.encodeToString(tagsSerializer, q.tags),
             alarmsJson = json.encodeToString(alarmsSerializer, q.alarms),
             priority = q.priority.wire,
+            completed = if (q.completed) 1L else 0L,
             createdAt = q.createdAt.toEpochMilliseconds(),
             updatedAt = q.updatedAt.toEpochMilliseconds(),
         )
@@ -126,6 +136,7 @@ class SqlDelightQRepository(driver: SqlDriver) : QRepository {
         tags: List<String>?,
         alarms: List<Alarm>?,
         priority: Priority?,
+        completed: Boolean?,
     ): Q? {
         val existing = queries.selectById(id.toString()).executeAsOneOrNull() ?: return null
         val now = Clock.System.now()
@@ -133,11 +144,13 @@ class SqlDelightQRepository(driver: SqlDriver) : QRepository {
         val newTagsJson = tags?.let { json.encodeToString(tagsSerializer, it) } ?: existing.tagsJson
         val newAlarmsJson = alarms?.let { json.encodeToString(alarmsSerializer, it) } ?: existing.alarmsJson
         val newPriority = priority?.wire ?: existing.priority
+        val newCompleted = completed?.let { if (it) 1L else 0L } ?: existing.completed
         queries.updateFields(
             text = newText,
             tagsJson = newTagsJson,
             alarmsJson = newAlarmsJson,
             priority = newPriority,
+            completed = newCompleted,
             updatedAt = now.toEpochMilliseconds(),
             id = existing.id,
         )
@@ -147,6 +160,7 @@ class SqlDelightQRepository(driver: SqlDriver) : QRepository {
                 tagsJson = newTagsJson,
                 alarmsJson = newAlarmsJson,
                 priority = newPriority,
+                completed = newCompleted,
                 updatedAt = now.toEpochMilliseconds(),
             )
         )
@@ -163,6 +177,7 @@ class SqlDelightQRepository(driver: SqlDriver) : QRepository {
         tags = json.decodeFromString(tagsSerializer, row.tagsJson),
         alarms = json.decodeFromString(alarmsSerializer, row.alarmsJson),
         priority = Priority.fromWire(row.priority),
+        completed = row.completed != 0L,
         createdAt = Instant.fromEpochMilliseconds(row.createdAt),
         updatedAt = Instant.fromEpochMilliseconds(row.updatedAt),
     )

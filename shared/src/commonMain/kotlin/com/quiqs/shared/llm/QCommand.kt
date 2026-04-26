@@ -25,6 +25,7 @@ sealed interface QCommand {
         val tags: List<String> = emptyList(),
         val alarms: List<Alarm> = emptyList(),
         val priority: Priority = Priority.MEDIUM,
+        val completed: Boolean = false,
     ) : QCommand
 
     /**
@@ -41,6 +42,7 @@ sealed interface QCommand {
         val tags: List<String>? = null,
         val alarms: List<Alarm>? = null,
         val priority: Priority? = null,
+        val completed: Boolean? = null,
     ) : QCommand
 
     /** Delete an existing Q by UUID string. */

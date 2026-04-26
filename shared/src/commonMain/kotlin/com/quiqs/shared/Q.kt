@@ -14,6 +14,7 @@ import kotlin.uuid.Uuid
  * @property tags Free-form classifier labels.
  * @property alarms Triggers that surface this Q to the user. See [Alarm].
  * @property priority User-set importance. Defaults to [Priority.MEDIUM] when unspecified.
+ * @property completed Whether the user has marked the Q as done.
  * @property createdAt When the Q was first persisted.
  * @property updatedAt When the Q was last modified.
  */
@@ -23,6 +24,7 @@ data class Q(
     val tags: List<String> = emptyList(),
     val alarms: List<Alarm> = emptyList(),
     val priority: Priority = Priority.MEDIUM,
+    val completed: Boolean = false,
     val createdAt: Instant,
     val updatedAt: Instant,
 )

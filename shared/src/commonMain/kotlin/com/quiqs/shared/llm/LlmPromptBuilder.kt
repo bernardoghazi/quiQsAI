@@ -25,6 +25,7 @@ data class QFullSnapshot(
     val tags: List<String>,
     val alarms: List<Alarm>,
     val priority: Priority,
+    val completed: Boolean,
 )
 
 /** Convert a domain [Q] to the wire snapshot. */
@@ -34,6 +35,7 @@ fun Q.toFullSnapshot(): QFullSnapshot = QFullSnapshot(
     tags = tags,
     alarms = alarms,
     priority = priority,
+    completed = completed,
 )
 
 private val promptJson = Json {
@@ -181,12 +183,16 @@ class LlmPromptBuilder(
             $BASE
 
             Commands:
-              {"type":"update","id":"<uuid>","text":"...","tags":[],"alarms":[],"priority":"high|medium|low"}
+              {"type":"update","id":"<uuid>","text":"...","tags":[],"alarms":[],"priority":"high|medium|low","completed":true|false}
               {"type":"delete","id":"<uuid>"}
 
             $ALARMS_AND_TIME_RULES
 
             $PRIORITY_RULES
+
+            Completed:
+            - Set "completed":true when the user signals the Q is done ("done", "I did it", "mark complete", "já fiz").
+            - Set "completed":false to reopen ("undo", "not done yet").
 
             Content rules:
             - Do not translate the user's language in "text".
@@ -199,9 +205,9 @@ class LlmPromptBuilder(
 
             You have tools to look up the user's Qs:
               search_qs(query): find Qs by case-insensitive substring in text or tags
-              list_all_qs(): list all Qs; use when search is unhelpful or the question is about priority/counts
+              list_all_qs(): list all Qs; use when search is unhelpful or the question is about priority/counts/completion
 
-            Each returned Q has: id, text, tags, alarms, priority ("high"|"medium"|"low").
+            Each returned Q has: id, text, tags, alarms, priority ("high"|"medium"|"low"), completed (true|false).
 
             Call tools to fetch data, then respond with exactly:
               {"type":"answer","text":"..."}
