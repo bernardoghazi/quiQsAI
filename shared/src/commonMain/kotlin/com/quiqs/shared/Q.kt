@@ -13,6 +13,7 @@ import kotlin.uuid.Uuid
  * @property text Note content as written by the user, in their language.
  * @property tags Free-form classifier labels.
  * @property alarms Triggers that surface this Q to the user. See [Alarm].
+ * @property priority User-set importance. Defaults to [Priority.MEDIUM] when unspecified.
  * @property createdAt When the Q was first persisted.
  * @property updatedAt When the Q was last modified.
  */
@@ -21,6 +22,7 @@ data class Q(
     val text: String,
     val tags: List<String> = emptyList(),
     val alarms: List<Alarm> = emptyList(),
+    val priority: Priority = Priority.MEDIUM,
     val createdAt: Instant,
     val updatedAt: Instant,
 )

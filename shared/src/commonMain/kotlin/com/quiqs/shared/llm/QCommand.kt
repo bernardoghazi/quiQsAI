@@ -1,6 +1,7 @@
 package com.quiqs.shared.llm
 
 import com.quiqs.shared.Alarm
+import com.quiqs.shared.Priority
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -23,6 +24,7 @@ sealed interface QCommand {
         val text: String,
         val tags: List<String> = emptyList(),
         val alarms: List<Alarm> = emptyList(),
+        val priority: Priority = Priority.MEDIUM,
     ) : QCommand
 
     /**
@@ -38,6 +40,7 @@ sealed interface QCommand {
         val text: String? = null,
         val tags: List<String>? = null,
         val alarms: List<Alarm>? = null,
+        val priority: Priority? = null,
     ) : QCommand
 
     /** Delete an existing Q by UUID string. */

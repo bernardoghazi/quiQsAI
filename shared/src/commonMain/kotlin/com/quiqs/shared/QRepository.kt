@@ -43,6 +43,7 @@ interface QRepository {
         text: String,
         tags: List<String> = emptyList(),
         alarms: List<Alarm> = emptyList(),
+        priority: Priority = Priority.MEDIUM,
     ): Q
 
     /**
@@ -54,6 +55,7 @@ interface QRepository {
         text: String? = null,
         tags: List<String>? = null,
         alarms: List<Alarm>? = null,
+        priority: Priority? = null,
     ): Q?
 
     /** Deletes the row with [id]. No-op if the row does not exist. */
@@ -95,13 +97,14 @@ class SqlDelightQRepository(driver: SqlDriver) : QRepository {
     override suspend fun getById(id: Uuid): Q? =
         queries.selectById(id.toString()).executeAsOneOrNull()?.let(::toDomain)
 
-    override suspend fun create(text: String, tags: List<String>, alarms: List<Alarm>): Q {
+    override suspend fun create(text: String, tags: List<String>, alarms: List<Alarm>, priority: Priority): Q {
         val now = Clock.System.now()
         val q = Q(
             id = Uuid.random(),
             text = text,
             tags = tags,
             alarms = alarms,
+            priority = priority,
             createdAt = now,
             updatedAt = now,
         )
@@ -110,6 +113,7 @@ class SqlDelightQRepository(driver: SqlDriver) : QRepository {
             text = q.text,
             tagsJson = json.encodeToString(tagsSerializer, q.tags),
             alarmsJson = json.encodeToString(alarmsSerializer, q.alarms),
+            priority = q.priority.wire,
             createdAt = q.createdAt.toEpochMilliseconds(),
             updatedAt = q.updatedAt.toEpochMilliseconds(),
         )
@@ -121,16 +125,19 @@ class SqlDelightQRepository(driver: SqlDriver) : QRepository {
         text: String?,
         tags: List<String>?,
         alarms: List<Alarm>?,
+        priority: Priority?,
     ): Q? {
         val existing = queries.selectById(id.toString()).executeAsOneOrNull() ?: return null
         val now = Clock.System.now()
         val newText = text ?: existing.text
         val newTagsJson = tags?.let { json.encodeToString(tagsSerializer, it) } ?: existing.tagsJson
         val newAlarmsJson = alarms?.let { json.encodeToString(alarmsSerializer, it) } ?: existing.alarmsJson
+        val newPriority = priority?.wire ?: existing.priority
         queries.updateFields(
             text = newText,
             tagsJson = newTagsJson,
             alarmsJson = newAlarmsJson,
+            priority = newPriority,
             updatedAt = now.toEpochMilliseconds(),
             id = existing.id,
         )
@@ -139,6 +146,7 @@ class SqlDelightQRepository(driver: SqlDriver) : QRepository {
                 text = newText,
                 tagsJson = newTagsJson,
                 alarmsJson = newAlarmsJson,
+                priority = newPriority,
                 updatedAt = now.toEpochMilliseconds(),
             )
         )
@@ -154,6 +162,7 @@ class SqlDelightQRepository(driver: SqlDriver) : QRepository {
         text = row.text,
         tags = json.decodeFromString(tagsSerializer, row.tagsJson),
         alarms = json.decodeFromString(alarmsSerializer, row.alarmsJson),
+        priority = Priority.fromWire(row.priority),
         createdAt = Instant.fromEpochMilliseconds(row.createdAt),
         updatedAt = Instant.fromEpochMilliseconds(row.updatedAt),
     )

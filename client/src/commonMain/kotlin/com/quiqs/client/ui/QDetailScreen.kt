@@ -118,6 +118,8 @@ fun QDetailScreen(
             }
 
             existing?.let { q ->
+                Text("Priority", fontWeight = FontWeight.SemiBold)
+                Text(q.priority.wire)
                 if (q.tags.isNotEmpty()) {
                     Text("Tags", fontWeight = FontWeight.SemiBold)
                     Text(q.tags.joinToString(", "))

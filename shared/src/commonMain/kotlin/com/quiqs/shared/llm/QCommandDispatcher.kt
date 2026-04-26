@@ -39,13 +39,13 @@ class QCommandDispatcher(private val repository: QRepository) {
     /** Executes [command] against the repository and returns a [QCommandResult]. */
     suspend fun dispatch(command: QCommand): QCommandResult = when (command) {
         is QCommand.Create -> {
-            val q = repository.create(command.text, command.tags, command.alarms)
+            val q = repository.create(command.text, command.tags, command.alarms, command.priority)
             QCommandResult.Created(q.id, "Created “${q.text}”")
         }
         is QCommand.Update -> {
             val id = parseId(command.id)
                 ?: return QCommandResult.Failed("Invalid id: ${command.id}")
-            val q = repository.update(id, command.text, command.tags, command.alarms)
+            val q = repository.update(id, command.text, command.tags, command.alarms, command.priority)
             if (q == null) QCommandResult.Failed("No Q with id $id")
             else QCommandResult.Updated(q.id, "Updated “${q.text}”")
         }

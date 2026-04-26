@@ -3,6 +3,7 @@
 package com.quiqs.shared.llm
 
 import com.quiqs.shared.Alarm
+import com.quiqs.shared.Priority
 import com.quiqs.shared.Q
 import kotlinx.datetime.Instant
 import kotlinx.datetime.TimeZone
@@ -23,6 +24,7 @@ data class QFullSnapshot(
     val text: String,
     val tags: List<String>,
     val alarms: List<Alarm>,
+    val priority: Priority,
 )
 
 /** Convert a domain [Q] to the wire snapshot. */
@@ -31,6 +33,7 @@ fun Q.toFullSnapshot(): QFullSnapshot = QFullSnapshot(
     text = text,
     tags = tags,
     alarms = alarms,
+    priority = priority,
 )
 
 private val promptJson = Json {
@@ -143,13 +146,21 @@ class LlmPromptBuilder(
             - Emit "at" in the given tz as ISO-8601 with offset, not UTC. Example: user says "5pm" with offset 03:00 → "17:00:00-03:00".
         """.trimIndent()
 
+        private val PRIORITY_RULES = """
+            Priority: "high" | "medium" | "low". Default "medium" if the user doesn't signal urgency.
+            - "urgent", "asap", "critical", "important" → "high"
+            - "whenever", "low priority", "no rush" → "low"
+        """.trimIndent()
+
         private val SYSTEM_CREATE = """
             $BASE
 
             Command:
-              {"type":"create","text":"...","tags":[],"alarms":[]}
+              {"type":"create","text":"...","tags":[],"alarms":[],"priority":"medium"}
 
             $ALARMS_AND_TIME_RULES
+
+            $PRIORITY_RULES
 
             Content rules:
             - Do not translate the user's language in "text".
@@ -157,20 +168,25 @@ class LlmPromptBuilder(
 
             Examples:
               "Cue me at 5pm to pick up Stella"
-              → {"type":"create","text":"pick up Stella","tags":[],"alarms":[{"type":"oneOffTime","at":"<resolved>"}]}
+              → {"type":"create","text":"pick up Stella","tags":[],"alarms":[{"type":"oneOffTime","at":"<resolved>"}],"priority":"medium"}
+
+              "Urgent: call the doctor"
+              → {"type":"create","text":"call the doctor","tags":[],"alarms":[],"priority":"high"}
 
               "Me lembra de ligar pro médico amanhã às 9"
-              → {"type":"create","text":"ligar pro médico","tags":[],"alarms":[{"type":"oneOffTime","at":"<resolved>"}]}
+              → {"type":"create","text":"ligar pro médico","tags":[],"alarms":[{"type":"oneOffTime","at":"<resolved>"}],"priority":"medium"}
         """.trimIndent()
 
         private val SYSTEM_EDIT = """
             $BASE
 
             Commands:
-              {"type":"update","id":"<uuid>","text":"...","tags":[],"alarms":[]}
+              {"type":"update","id":"<uuid>","text":"...","tags":[],"alarms":[],"priority":"high|medium|low"}
               {"type":"delete","id":"<uuid>"}
 
             $ALARMS_AND_TIME_RULES
+
+            $PRIORITY_RULES
 
             Content rules:
             - Do not translate the user's language in "text".
@@ -183,7 +199,9 @@ class LlmPromptBuilder(
 
             You have tools to look up the user's Qs:
               search_qs(query): find Qs by case-insensitive substring in text or tags
-              list_all_qs(): list all Qs; use when search is unhelpful
+              list_all_qs(): list all Qs; use when search is unhelpful or the question is about priority/counts
+
+            Each returned Q has: id, text, tags, alarms, priority ("high"|"medium"|"low").
 
             Call tools to fetch data, then respond with exactly:
               {"type":"answer","text":"..."}
