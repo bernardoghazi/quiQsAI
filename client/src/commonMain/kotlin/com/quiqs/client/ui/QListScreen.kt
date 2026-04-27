@@ -38,12 +38,13 @@ import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
 /**
- * Landing screen — lists every stored Q and exposes the entry points for creating a new
- * Q, opening one ([onOpenQ]), or asking a question about them ([onQueryQs]).
+ * Landing screen — lists every stored Q and exposes the entry points for opening one
+ * ([onOpenQ]), asking a question about them ([onQueryQs]), or invoking the combined
+ * "new Q or filter" voice prompt ([onAudioPrompt]).
  *
  * The list is rendered after applying [filterSort] as a pure projection. When the spec
  * is non-default an "Active filter" indicator surfaces in the top bar with a Clear
- * affordance ([onClearFilterSort]). [onFilterSort] navigates to the NL filter prompt.
+ * affordance ([onClearFilterSort]).
  *
  * Subscribes to [QRepository.observeAll], so insertions/deletions re-render automatically.
  */
@@ -52,10 +53,9 @@ import kotlin.uuid.Uuid
 fun QListScreen(
     repository: QRepository,
     filterSort: QFilterSort,
-    onAddQ: () -> Unit,
     onOpenQ: (Uuid) -> Unit,
     onQueryQs: () -> Unit,
-    onFilterSort: () -> Unit,
+    onAudioPrompt: () -> Unit,
     onClearFilterSort: () -> Unit,
 ) {
     val all by repository.observeAll().collectAsState(initial = emptyList())
@@ -76,7 +76,7 @@ fun QListScreen(
         },
         floatingActionButton = {
             FloatingActionButton(
-                onClick = {},
+                onClick = onAudioPrompt,
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
             ) {
@@ -88,9 +88,11 @@ fun QListScreen(
             }
         },
         bottomBar = {
+            // Bottom-bar actions are intentionally no-ops for now — wiring lands
+            // alongside the dedicated UI affordances in a follow-up.
             QBottomBar(
-                onFilterSort = onFilterSort,
-                onAdd = onAddQ,
+                onFilterSort = {},
+                onAdd = {},
                 onOverflow = {},
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
             )

@@ -137,12 +137,14 @@ fun QPromptScreen(
         PromptMode.Create -> "Add Q"
         PromptMode.Query -> "Query Qs"
         PromptMode.FilterSort -> "Filter & sort"
+        PromptMode.NewOrFilter -> "New or filter"
         is PromptMode.Edit -> "Edit Q"
     }
     val placeholder = when (mode) {
         PromptMode.Create -> "What should I remind you of?"
         PromptMode.Query -> "Ask about your Qs"
         PromptMode.FilterSort -> "How should I filter/sort the list?"
+        PromptMode.NewOrFilter -> "Add a Q, or describe a filter…"
         is PromptMode.Edit -> "Describe the change"
     }
 
@@ -185,6 +187,7 @@ fun QPromptScreen(
                                             PromptMode.Create -> createFromText(p, cb)
                                             PromptMode.Query -> queryFromText(p, cb)
                                             PromptMode.FilterSort -> filterSortFromText(p, cb)
+                                            PromptMode.NewOrFilter -> newOrFilterFromText(p, cb)
                                             is PromptMode.Edit -> editFromText(mode.qId, p, cb)
                                         }
                                     }
@@ -230,6 +233,7 @@ fun QPromptScreen(
                                                 PromptMode.Create -> createFromVoice(path, cb)
                                                 PromptMode.Query -> queryFromVoice(path, cb)
                                                 PromptMode.FilterSort -> filterSortFromVoice(path, cb)
+                                                PromptMode.NewOrFilter -> newOrFilterFromVoice(path, cb)
                                                 is PromptMode.Edit -> editFromVoice(mode.qId, path, cb)
                                             }
                                         }

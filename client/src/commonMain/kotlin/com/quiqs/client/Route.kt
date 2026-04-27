@@ -49,4 +49,11 @@ sealed interface PromptMode {
      * the list screen. Read-only — no repository writes happen in this mode.
      */
     data object FilterSort : PromptMode
+
+    /**
+     * Combined "new Q OR filter & sort" mode. The system prompt lists both commands
+     * and a disambiguation rubric, letting the LLM decide which intent the prompt
+     * matches. Used by the list screen's voice FAB.
+     */
+    data object NewOrFilter : PromptMode
 }

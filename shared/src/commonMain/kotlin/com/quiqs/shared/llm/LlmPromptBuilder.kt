@@ -69,6 +69,9 @@ class LlmPromptBuilder(
     /** System instruction for filter/sort-mode prompts. */
     val systemForFilterSort: String get() = SYSTEM_FILTER_SORT
 
+    /** System instruction for the combined "new Q or filter+sort" mode. */
+    val systemForNewOrFilter: String get() = SYSTEM_NEW_OR_FILTER
+
     /** Build the user prompt for creating a Q from typed text. */
     fun buildForCreate(userPrompt: String): String =
         buildBase {
@@ -123,6 +126,19 @@ class LlmPromptBuilder(
 
     /** Build the user prompt for filter+sort from audio. */
     fun buildForFilterSortAudio(): String =
+        buildBase {
+            appendLine(AUDIO_INSTRUCTION)
+        }
+
+    /** Build the user prompt for the combined new-or-filter mode from typed text. */
+    fun buildForNewOrFilter(userPrompt: String): String =
+        buildBase {
+            appendLine("User prompt:")
+            appendLine(userPrompt)
+        }
+
+    /** Build the user prompt for the combined new-or-filter mode from audio. */
+    fun buildForNewOrFilterAudio(): String =
         buildBase {
             appendLine(AUDIO_INSTRUCTION)
         }
@@ -265,6 +281,86 @@ class LlmPromptBuilder(
 
               "filter only completed work tasks, newest first"
               → {"type":"filterSort","spec":{"tags":["work"],"completed":"only_done","sortBy":"created_at","sortDir":"desc"}}
+
+              "clear filters"
+              → {"type":"filterSort","spec":{}}
+        """.trimIndent()
+
+        private val SYSTEM_NEW_OR_FILTER = """
+            $BASE
+
+            Output exactly one of two commands based on user intent.
+
+            To create a new Q:
+              {"type":"create","text":"...","tags":[],"alarms":[],"priority":"medium"}
+
+            To filter/sort the existing Q list:
+              {"type":"filterSort","spec":{
+                "text": <string|null>,
+                "tags": [<string>...],
+                "priorities": [<"high"|"medium"|"low">...],
+                "alarm": <"any"|"none"|"any_set"|"recurring"|"one_off"|"geofence">,
+                "completed": <"any"|"only_open"|"only_done">,
+                "sortBy": <"tags"|"priority"|"created_at"|"updated_at"|"alarm">,
+                "sortDir": <"asc"|"desc">
+              }}
+
+            Intent disambiguation (decide first, then emit):
+            - Create when the user names a NEW task/note/reminder, often with a time, place,
+              or action verb directed at themselves. Cues: "remind me to...", "add/create a Q to...".
+            - FilterSort when the user describes how to slice or order the EXISTING list.
+              Cues: "show", "hide", "filter", "sort by", "newest first", "high priority only".
+            - If ambiguous (e.g. a bare noun phrase like "groceries"), prefer "filterSort" —
+              creating an empty-detail Q is worse than narrowing the list.
+
+            $ALARMS_AND_TIME_RULES
+
+            $PRIORITY_RULES
+
+            FilterSort field meaning:
+            - text: case-insensitive substring matched against Q text.
+            - tags: only Qs whose tags contain at least one (case-insensitive).
+            - priorities: only Qs whose priority is in the list.
+            - alarm: filter by alarm shape (any=no filter, none=no alarms, any_set=has alarms,
+              recurring/one_off/geofence=has that kind).
+            - completed: only_open hides done Qs; only_done shows only done Qs; any=both.
+            FilterSort defaults: text=null, tags=[], priorities=[], alarm="any",
+            completed="only_open", sortBy="created_at", sortDir="desc". Omit fields the
+            user did not mention. Empty spec {} clears any active filter.
+
+            FilterSort mapping shortcuts:
+            - "high priority" / "urgent" → priorities=["high"]
+            - "completed" / "done" → completed="only_done"; "open"/"todo" → "only_open"
+            - "no alarms" → alarm="none"; "with alarms" → alarm="any_set"
+            - "recurring" → alarm="recurring"; "one-off" → alarm="one_off"
+            - "next alarm" / "upcoming" / "soonest" → sortBy="alarm", sortDir="asc"
+            - "newest first" → sortBy="created_at", sortDir="desc"
+            - "oldest first" → sortBy="created_at", sortDir="asc"
+            - "recently edited" → sortBy="updated_at", sortDir="desc"
+            - "by priority" → sortBy="priority", sortDir="asc" (high first)
+            - "by tag" / "group by tag" → sortBy="tags", sortDir="asc"
+            - "clear" / "reset filters" → emit empty spec {}
+
+            Create content rules:
+            - Do not translate the user's language in "text".
+            - "text" is the note content only; strip wrappers like "remind me to", "cue me to",
+              "me lembra de".
+
+            Examples:
+              "Cue me at 5pm to pick up Stella"
+              → {"type":"create","text":"pick up Stella","tags":[],"alarms":[{"type":"oneOffTime","at":"<resolved>"}],"priority":"medium"}
+
+              "Urgent: call the doctor"
+              → {"type":"create","text":"call the doctor","tags":[],"alarms":[],"priority":"high"}
+
+              "show only high priority"
+              → {"type":"filterSort","spec":{"priorities":["high"]}}
+
+              "sort by next alarm"
+              → {"type":"filterSort","spec":{"sortBy":"alarm","sortDir":"asc"}}
+
+              "hide done tasks"
+              → {"type":"filterSort","spec":{"completed":"only_open"}}
 
               "clear filters"
               → {"type":"filterSort","spec":{}}

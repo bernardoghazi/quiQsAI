@@ -112,6 +112,29 @@ class QAgent(
         )
 
     /**
+     * Combined mode: the model picks between creating a new Q and filtering/sorting the
+     * existing list based on the user's intent. The dispatcher applies whichever command
+     * the model emits, so callers should be ready to handle both [QCommand.Create] and
+     * [QCommand.FilterSort] outcomes.
+     */
+    suspend fun newOrFilterFromText(prompt: String, onChunk: (String) -> Unit = {}): QAgentOutcome =
+        run(
+            prompt = promptBuilder.buildForNewOrFilter(prompt),
+            systemInstruction = promptBuilder.systemForNewOrFilter,
+            audioPath = null,
+            onChunk = onChunk,
+        )
+
+    /** Voice variant of [newOrFilterFromText]. */
+    suspend fun newOrFilterFromVoice(audioPath: String, onChunk: (String) -> Unit = {}): QAgentOutcome =
+        run(
+            prompt = promptBuilder.buildForNewOrFilterAudio(),
+            systemInstruction = promptBuilder.systemForNewOrFilter,
+            audioPath = audioPath,
+            onChunk = onChunk,
+        )
+
+    /**
      * Drives one end-to-end LLM turn off the main thread. Runs inference, parses the
      * output, and dispatches the resulting command. Parse failures are surfaced as
      * [QAgentOutcome.ParseFailed] — callers can show the raw output for debugging.
