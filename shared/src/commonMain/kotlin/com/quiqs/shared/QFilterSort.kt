@@ -9,7 +9,7 @@ import kotlinx.serialization.Serializable
 /**
  * Pure projection spec applied over an in-memory list of [Q]s. Drives the list screen's
  * filter+sort UI and is also the wire shape the LLM emits for natural-language filter
- * requests (see `QCommand.FilterSort` and `LlmPromptBuilder.systemForFilterSort`).
+ * requests (see `QCommand.FilterSort` and `LlmPromptBuilder.systemForNewOrFilter`).
  *
  * The defaults are the "no-op" spec — `applyTo` returns the input unchanged sorted by
  * creation date descending, which matches the previous list behaviour.

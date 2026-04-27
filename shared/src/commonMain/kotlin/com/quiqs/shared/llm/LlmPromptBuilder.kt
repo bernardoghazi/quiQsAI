@@ -46,7 +46,7 @@ private val promptJson = Json {
 /**
  * Builds the system and user prompts fed into [LlmEngine.generate] for each UI mode.
  *
- * System prompts are split by mode (create / edit / query) rather than a single
+ * System prompts are split by mode (new-or-filter / edit / query) rather than a single
  * monolithic instruction — each mode only gets the rules and examples relevant to it,
  * keeping prefill cost well under the model's 4096-token context window.
  *
@@ -57,8 +57,8 @@ class LlmPromptBuilder(
     private val clock: () -> Instant,
     private val timeZone: TimeZone = TimeZone.currentSystemDefault(),
 ) {
-    /** System instruction for create-mode prompts. */
-    val systemForCreate: String get() = SYSTEM_CREATE
+    /** System instruction for the combined "new Q or filter+sort" mode. */
+    val systemForNewOrFilter: String get() = SYSTEM_NEW_OR_FILTER
 
     /** System instruction for edit-mode prompts. */
     val systemForEdit: String get() = SYSTEM_EDIT
@@ -66,21 +66,15 @@ class LlmPromptBuilder(
     /** System instruction for query-mode prompts (includes the tool contract). */
     val systemForQuery: String get() = SYSTEM_QUERY
 
-    /** System instruction for filter/sort-mode prompts. */
-    val systemForFilterSort: String get() = SYSTEM_FILTER_SORT
-
-    /** System instruction for the combined "new Q or filter+sort" mode. */
-    val systemForNewOrFilter: String get() = SYSTEM_NEW_OR_FILTER
-
-    /** Build the user prompt for creating a Q from typed text. */
-    fun buildForCreate(userPrompt: String): String =
+    /** Build a user prompt that just wraps typed input (used by query and new-or-filter). */
+    fun buildPromptText(userPrompt: String): String =
         buildBase {
             appendLine("User prompt:")
             appendLine(userPrompt)
         }
 
-    /** Build the user prompt for creating a Q from audio (model transcribes silently). */
-    fun buildForCreateAudio(): String =
+    /** Build a user prompt that defers to an audio attachment (used by query and new-or-filter). */
+    fun buildPromptAudio(): String =
         buildBase {
             appendLine(AUDIO_INSTRUCTION)
         }
@@ -101,45 +95,6 @@ class LlmPromptBuilder(
             appendLine("Q being edited:")
             appendLine(promptJson.encodeToString(QFullSnapshot.serializer(), q.toFullSnapshot()))
             appendLine()
-            appendLine(AUDIO_INSTRUCTION)
-        }
-
-    /** Build the user prompt for querying Qs from typed text. */
-    fun buildForQuery(userPrompt: String): String =
-        buildBase {
-            appendLine("User prompt:")
-            appendLine(userPrompt)
-        }
-
-    /** Build the user prompt for querying Qs from audio. */
-    fun buildForQueryAudio(): String =
-        buildBase {
-            appendLine(AUDIO_INSTRUCTION)
-        }
-
-    /** Build the user prompt for translating natural language into a filter+sort spec. */
-    fun buildForFilterSort(userPrompt: String): String =
-        buildBase {
-            appendLine("User prompt:")
-            appendLine(userPrompt)
-        }
-
-    /** Build the user prompt for filter+sort from audio. */
-    fun buildForFilterSortAudio(): String =
-        buildBase {
-            appendLine(AUDIO_INSTRUCTION)
-        }
-
-    /** Build the user prompt for the combined new-or-filter mode from typed text. */
-    fun buildForNewOrFilter(userPrompt: String): String =
-        buildBase {
-            appendLine("User prompt:")
-            appendLine(userPrompt)
-        }
-
-    /** Build the user prompt for the combined new-or-filter mode from audio. */
-    fun buildForNewOrFilterAudio(): String =
-        buildBase {
             appendLine(AUDIO_INSTRUCTION)
         }
 
@@ -186,31 +141,6 @@ class LlmPromptBuilder(
             - "whenever", "low priority", "no rush" → "low"
         """.trimIndent()
 
-        private val SYSTEM_CREATE = """
-            $BASE
-
-            Command:
-              {"type":"create","text":"...","tags":[],"alarms":[],"priority":"medium"}
-
-            $ALARMS_AND_TIME_RULES
-
-            $PRIORITY_RULES
-
-            Content rules:
-            - Do not translate the user's language in "text".
-            - "text" is the note content only; strip wrappers like "remind me to", "cue me to", "me lembra de".
-
-            Examples:
-              "Cue me at 5pm to pick up Stella"
-              → {"type":"create","text":"pick up Stella","tags":[],"alarms":[{"type":"oneOffTime","at":"<resolved>"}],"priority":"medium"}
-
-              "Urgent: call the doctor"
-              → {"type":"create","text":"call the doctor","tags":[],"alarms":[],"priority":"high"}
-
-              "Me lembra de ligar pro médico amanhã às 9"
-              → {"type":"create","text":"ligar pro médico","tags":[],"alarms":[{"type":"oneOffTime","at":"<resolved>"}],"priority":"medium"}
-        """.trimIndent()
-
         private val SYSTEM_EDIT = """
             $BASE
 
@@ -230,60 +160,6 @@ class LlmPromptBuilder(
             - Do not translate the user's language in "text".
             - Use the id from "Q being edited".
             - On update, omit unchanged fields.
-        """.trimIndent()
-
-        private val SYSTEM_FILTER_SORT = """
-            $BASE
-
-            Command:
-              {"type":"filterSort","spec":{
-                "text": <string|null>,
-                "tags": [<string>...],
-                "priorities": [<"high"|"medium"|"low">...],
-                "alarm": <"any"|"none"|"any_set"|"recurring"|"one_off"|"geofence">,
-                "completed": <"any"|"only_open"|"only_done">,
-                "sortBy": <"tags"|"priority"|"created_at"|"updated_at"|"alarm">,
-                "sortDir": <"asc"|"desc">
-              }}
-
-            Defaults: text=null, tags=[], priorities=[], alarm="any", completed="only_open",
-            sortBy="created_at", sortDir="desc". Omit fields the user did not mention.
-
-            Field meaning:
-            - text: case-insensitive substring matched against Q text.
-            - tags: only Qs whose tags contain at least one of these (case-insensitive).
-            - priorities: only Qs whose priority is in the list.
-            - alarm: filter by alarm shape (any=no filter, none=no alarms, any_set=has alarms,
-              recurring/one_off/geofence=has that kind).
-            - completed: only_open hides done Qs; only_done shows only done Qs; any=both.
-            - sortBy + sortDir: deterministic ordering.
-
-            Mapping rules:
-            - "high priority" / "urgent" → priorities=["high"]
-            - "completed" / "done" → completed="only_done"
-            - "open" / "not done" / "todo" → completed="only_open"
-            - "no alarms" → alarm="none"; "with alarms" → alarm="any_set"
-            - "recurring" → alarm="recurring"; "one-off" → alarm="one_off"
-            - "next alarm" / "upcoming" / "soonest" → sortBy="alarm", sortDir="asc"
-            - "newest first" → sortBy="created_at", sortDir="desc"
-            - "oldest first" → sortBy="created_at", sortDir="asc"
-            - "recently edited" → sortBy="updated_at", sortDir="desc"
-            - "by priority" → sortBy="priority", sortDir="asc" (high first)
-            - "by tag" / "group by tag" → sortBy="tags", sortDir="asc"
-            - "clear" / "reset" → emit empty spec {} to restore defaults
-
-            Examples:
-              "show high priority groceries Qs"
-              → {"type":"filterSort","spec":{"tags":["groceries"],"priorities":["high"]}}
-
-              "sort by next alarm"
-              → {"type":"filterSort","spec":{"sortBy":"alarm","sortDir":"asc"}}
-
-              "filter only completed work tasks, newest first"
-              → {"type":"filterSort","spec":{"tags":["work"],"completed":"only_done","sortBy":"created_at","sortDir":"desc"}}
-
-              "clear filters"
-              → {"type":"filterSort","spec":{}}
         """.trimIndent()
 
         private val SYSTEM_NEW_OR_FILTER = """

@@ -14,9 +14,9 @@ import kotlin.uuid.Uuid
  * Pipeline: pick the right system + user prompt for the mode → call [engine].generate →
  * pass the raw output to [parser] → apply the resulting [QCommand] through [dispatcher].
  *
- * Exposes six top-level methods — one per `(mode × input channel)` cell (create, edit,
- * query) × (text, voice). Each wraps the same private [run] helper with the right prompt
- * and tool set.
+ * Exposes one top-level method per `(mode × input channel)` cell across edit, query, and
+ * the combined new-or-filter mode. Each wraps the same private [run] helper with the
+ * right prompt and tool set.
  */
 class QAgent(
     private val engine: LlmEngine,
@@ -25,24 +25,6 @@ class QAgent(
     private val parser: LlmCommandParser = LlmCommandParser(),
     private val dispatcher: QCommandDispatcher = QCommandDispatcher(repository),
 ) {
-    /** Create a new Q from a typed prompt. */
-    suspend fun createFromText(prompt: String, onChunk: (String) -> Unit = {}): QAgentOutcome =
-        run(
-            prompt = promptBuilder.buildForCreate(prompt),
-            systemInstruction = promptBuilder.systemForCreate,
-            audioPath = null,
-            onChunk = onChunk,
-        )
-
-    /** Create a new Q from a recorded audio prompt. */
-    suspend fun createFromVoice(audioPath: String, onChunk: (String) -> Unit = {}): QAgentOutcome =
-        run(
-            prompt = promptBuilder.buildForCreateAudio(),
-            systemInstruction = promptBuilder.systemForCreate,
-            audioPath = audioPath,
-            onChunk = onChunk,
-        )
-
     /**
      * Edit an existing Q from a typed prompt. Fails fast with [QAgentOutcome.ParseFailed]
      * if [qId] does not resolve to a stored Q.
@@ -76,7 +58,7 @@ class QAgent(
      */
     suspend fun queryFromText(prompt: String, onChunk: (String) -> Unit = {}): QAgentOutcome =
         run(
-            prompt = promptBuilder.buildForQuery(prompt),
+            prompt = promptBuilder.buildPromptText(prompt),
             systemInstruction = promptBuilder.systemForQuery,
             audioPath = null,
             tools = queryToolsFor(repository),
@@ -86,28 +68,10 @@ class QAgent(
     /** Voice variant of [queryFromText]. */
     suspend fun queryFromVoice(audioPath: String, onChunk: (String) -> Unit = {}): QAgentOutcome =
         run(
-            prompt = promptBuilder.buildForQueryAudio(),
+            prompt = promptBuilder.buildPromptAudio(),
             systemInstruction = promptBuilder.systemForQuery,
             audioPath = audioPath,
             tools = queryToolsFor(repository),
-            onChunk = onChunk,
-        )
-
-    /** Translate a natural-language filter/sort request into a [QCommand.FilterSort]. */
-    suspend fun filterSortFromText(prompt: String, onChunk: (String) -> Unit = {}): QAgentOutcome =
-        run(
-            prompt = promptBuilder.buildForFilterSort(prompt),
-            systemInstruction = promptBuilder.systemForFilterSort,
-            audioPath = null,
-            onChunk = onChunk,
-        )
-
-    /** Voice variant of [filterSortFromText]. */
-    suspend fun filterSortFromVoice(audioPath: String, onChunk: (String) -> Unit = {}): QAgentOutcome =
-        run(
-            prompt = promptBuilder.buildForFilterSortAudio(),
-            systemInstruction = promptBuilder.systemForFilterSort,
-            audioPath = audioPath,
             onChunk = onChunk,
         )
 
@@ -119,7 +83,7 @@ class QAgent(
      */
     suspend fun newOrFilterFromText(prompt: String, onChunk: (String) -> Unit = {}): QAgentOutcome =
         run(
-            prompt = promptBuilder.buildForNewOrFilter(prompt),
+            prompt = promptBuilder.buildPromptText(prompt),
             systemInstruction = promptBuilder.systemForNewOrFilter,
             audioPath = null,
             onChunk = onChunk,
@@ -128,7 +92,7 @@ class QAgent(
     /** Voice variant of [newOrFilterFromText]. */
     suspend fun newOrFilterFromVoice(audioPath: String, onChunk: (String) -> Unit = {}): QAgentOutcome =
         run(
-            prompt = promptBuilder.buildForNewOrFilterAudio(),
+            prompt = promptBuilder.buildPromptAudio(),
             systemInstruction = promptBuilder.systemForNewOrFilter,
             audioPath = audioPath,
             onChunk = onChunk,

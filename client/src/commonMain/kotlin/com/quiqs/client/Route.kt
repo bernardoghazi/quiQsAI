@@ -30,25 +30,16 @@ sealed interface Route {
 /**
  * What kind of LLM interaction the user opened the prompt screen to perform.
  *
- * Splitting this off from [Route] lets the prompt screen render the same UI for all
- * three modes while dispatching to mode-specific agent calls (create, edit, query).
+ * Splitting this off from [Route] lets the prompt screen render the same UI for every
+ * mode while dispatching to mode-specific agent calls.
  */
 @OptIn(ExperimentalUuidApi::class)
 sealed interface PromptMode {
-    /** Create a new Q from the prompt. */
-    data object Create : PromptMode
-
     /** Modify the existing Q with [qId]. */
     data class Edit(val qId: Uuid) : PromptMode
 
     /** Ask a question about the user's Qs (read-only, uses query tools). */
     data object Query : PromptMode
-
-    /**
-     * Translate natural language into a [com.quiqs.shared.QFilterSort] spec applied to
-     * the list screen. Read-only — no repository writes happen in this mode.
-     */
-    data object FilterSort : PromptMode
 
     /**
      * Combined "new Q OR filter & sort" mode. The system prompt lists both commands
