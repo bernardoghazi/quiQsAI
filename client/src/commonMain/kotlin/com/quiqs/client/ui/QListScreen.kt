@@ -3,13 +3,15 @@ package com.quiqs.client.ui
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -21,8 +23,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.quiqs.client.ui.components.QBottomBar
 import com.quiqs.client.ui.components.QCard
 import com.quiqs.shared.QFilterSort
@@ -70,8 +75,16 @@ fun QListScreen(
             )
         },
         floatingActionButton = {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                FloatingActionButton(onClick = onAddQ) { Text("+", fontSize = 24.sp) }
+            FloatingActionButton(
+                onClick = {},
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+            ) {
+                Icon(
+                    imageVector = AudioWaveformIcon,
+                    contentDescription = "Voice prompt",
+                    modifier = Modifier.size(24.dp),
+                )
             }
         },
         bottomBar = {
@@ -113,3 +126,26 @@ fun QListScreen(
         }
     }
 }
+
+/**
+ * Five-bar audio level glyph used by the voice-prompt FAB. Inline to avoid pulling in
+ * `material-icons-extended` (same rationale as `RepeatIcon` in `QAlarmLabel`).
+ *
+ * Bar layout in the 24×24 viewport: heights 4-12-20-12-4 px, centered vertically,
+ * spaced 4 px apart starting at x=3.
+ */
+private val AudioWaveformIcon: ImageVector = ImageVector.Builder(
+    name = "AudioWaveform",
+    defaultWidth = 24.dp,
+    defaultHeight = 24.dp,
+    viewportWidth = 24f,
+    viewportHeight = 24f,
+).apply {
+    path(fill = SolidColor(Color.Black)) {
+        moveTo(3f, 10f); horizontalLineTo(5f); verticalLineTo(14f); horizontalLineTo(3f); close()
+        moveTo(7f, 6f); horizontalLineTo(9f); verticalLineTo(18f); horizontalLineTo(7f); close()
+        moveTo(11f, 2f); horizontalLineTo(13f); verticalLineTo(22f); horizontalLineTo(11f); close()
+        moveTo(15f, 6f); horizontalLineTo(17f); verticalLineTo(18f); horizontalLineTo(15f); close()
+        moveTo(19f, 10f); horizontalLineTo(21f); verticalLineTo(14f); horizontalLineTo(19f); close()
+    }
+}.build()
