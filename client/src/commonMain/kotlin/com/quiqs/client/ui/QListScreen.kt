@@ -26,6 +26,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.quiqs.client.ui.components.QBottomBar
 import com.quiqs.client.ui.components.QCard
 import com.quiqs.shared.QFilterSort
 import com.quiqs.shared.QRepository
@@ -36,7 +37,7 @@ import kotlin.uuid.Uuid
 
 /**
  * Landing screen — lists every stored Q and exposes the entry points for creating a new
- * Q (FAB), opening one ([onOpenQ]), or asking a question about them ([onQueryQs]).
+ * Q, opening one ([onOpenQ]), or asking a question about them ([onQueryQs]).
  *
  * The list is rendered after applying [filterSort] as a pure projection. When the spec
  * is non-default an "Active filter" indicator surfaces in the top bar with a Clear
@@ -83,6 +84,14 @@ fun QListScreen(
                 ) { Text("⚲", fontSize = 18.sp) }
                 FloatingActionButton(onClick = onAddQ) { Text("+", fontSize = 24.sp) }
             }
+        },
+        bottomBar = {
+            QBottomBar(
+                onFilterSort = onFilterSort,
+                onAdd = onAddQ,
+                onOverflow = {},
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            )
         },
     ) { padding ->
         if (qs.isEmpty()) {
