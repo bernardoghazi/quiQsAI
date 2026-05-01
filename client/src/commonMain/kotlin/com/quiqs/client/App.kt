@@ -36,9 +36,11 @@ fun App(
             is Route.List -> QListScreen(
                 repository = repository,
                 filterSort = filterSort,
+                agentProvider = agentProvider,
+                recorderProvider = recorderProvider,
                 onOpenQ = { id -> route = Route.Detail(id = id) },
                 onQueryQs = { route = Route.Prompt(PromptMode.Query) },
-                onAudioPrompt = { route = Route.Prompt(PromptMode.NewOrFilter) },
+                onFilterSortApplied = { spec -> filterSort = spec },
                 onClearFilterSort = { filterSort = QFilterSort() },
             )
             is Route.Detail -> QDetailScreen(
