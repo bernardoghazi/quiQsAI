@@ -34,21 +34,15 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.quiqs.client.AgentProvider
-import com.quiqs.client.AgentStatus
-import com.quiqs.client.audio.AudioRecorder
 import com.quiqs.client.audio.RecorderProvider
-import com.quiqs.client.audio.RecorderStatus
 import com.quiqs.client.ui.components.QBottomBar
 import com.quiqs.client.ui.components.QCard
 import com.quiqs.client.ui.components.QVoicePromptDialog
-import com.quiqs.client.ui.components.VoicePromptState
 import com.quiqs.shared.QFilterSort
 import com.quiqs.shared.QRepository
 import com.quiqs.shared.applyTo
-import com.quiqs.shared.llm.QAgent
-import com.quiqs.shared.llm.QAgentOutcome
-import com.quiqs.shared.llm.QCommandResult
 import kotlinx.coroutines.launch
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -62,10 +56,11 @@ import kotlin.uuid.Uuid
  * is non-default an "Active filter" indicator surfaces in the top bar with a Clear
  * affordance ([onClearFilterSort]).
  *
- * The FAB itself drives a press-and-hold voice flow: the long-press opens
- * [QVoicePromptDialog], starts recording, and on release runs `newOrFilterFromVoice`
- * through [agentProvider]. A [QCommandResult.FilterSorted] outcome is forwarded via
- * [onFilterSortApplied] so the list re-renders under the new spec.
+ * The FAB drives a press-and-hold voice flow: the long-press tells [QListViewModel] to
+ * open [QVoicePromptDialog] and start recording; on release the VM runs
+ * `newOrFilterFromVoice`, streams chunks into the dialog, and emits a filter+sort spec
+ * via [QListViewModel.filterSortApplied] which the screen forwards through
+ * [onFilterSortApplied].
  *
  * Subscribes to [QRepository.observeAll], so insertions/deletions re-render automatically.
  */
@@ -85,99 +80,15 @@ fun QListScreen(
     val qs = remember(all, filterSort) { filterSort.applyTo(all) }
     val scope = rememberCoroutineScope()
 
-    var agent by remember { mutableStateOf<QAgent?>(null) }
-    var agentError by remember { mutableStateOf<String?>(null) }
-    var voiceState by remember { mutableStateOf<VoicePromptState>(VoicePromptState.Idle) }
-    var activeRecorder by remember { mutableStateOf<AudioRecorder?>(null) }
+    val vm: QListViewModel = viewModel { QListViewModel(agentProvider, recorderProvider) }
+    val voiceState by vm.voiceState.collectAsState()
+    LaunchedEffect(vm, onFilterSortApplied) {
+        vm.filterSortApplied.collect { onFilterSortApplied(it) }
+    }
+
+    // Tracks whether the current pointer-down crossed the long-press threshold, so the
+    // shared `onPress` handler only ends the recording when a long press actually fired.
     var longPressActive by remember { mutableStateOf(false) }
-
-    LaunchedEffect(agentProvider) {
-        try {
-            when (val result = agentProvider.get()) {
-                is AgentStatus.Available -> agent = result.agent
-                is AgentStatus.Unavailable -> agentError = result.reason
-            }
-        } catch (t: Throwable) {
-            agentError = t.message ?: t::class.simpleName ?: "Failed to initialize LLM"
-        }
-    }
-
-    /**
-     * Long-press fired on the FAB: open the dialog and begin capture. Audio start is
-     * suspend, so a release that lands before [AudioRecorder.start] returns is handled
-     * by [endLongPress] checking [activeRecorder].
-     */
-    fun beginLongPress() {
-        if (agent == null) {
-            voiceState = VoicePromptState.Error(agentError ?: "LLM is still loading.")
-            return
-        }
-        voiceState = VoicePromptState.Recording
-        scope.launch {
-            when (val r = recorderProvider.get()) {
-                is RecorderStatus.Available -> {
-                    activeRecorder = r.recorder
-                    runCatching { r.recorder.start() }.onFailure {
-                        activeRecorder = null
-                        voiceState = VoicePromptState.Error(it.message ?: "Failed to start recorder.")
-                    }
-                }
-
-                is RecorderStatus.PermissionRequired ->
-                    voiceState = VoicePromptState.Error("Microphone permission denied.")
-
-                is RecorderStatus.Unavailable ->
-                    voiceState = VoicePromptState.Error(r.reason)
-            }
-        }
-    }
-
-    /**
-     * Long-press released on the FAB: stop capture and run the LLM, streaming chunks
-     * into the dialog. Settles into [VoicePromptState.Done] or [VoicePromptState.Error].
-     */
-    fun endLongPress() {
-        scope.launch {
-            val rec = activeRecorder
-            if (rec == null) {
-                // Recorder hasn't started yet (or already failed); the error state is
-                // already showing — nothing to stop.
-                return@launch
-            }
-            val path = runCatching { rec.stop() }.getOrElse { err ->
-                activeRecorder = null
-                voiceState = VoicePromptState.Error(err.message ?: "Failed to stop recorder.")
-                return@launch
-            }
-            activeRecorder = null
-            val a = agent ?: run {
-                voiceState = VoicePromptState.Error("LLM not available.")
-                return@launch
-            }
-            voiceState = VoicePromptState.Processing("")
-            val outcome = runCatching {
-                a.newOrFilterFromVoice(path) { piece ->
-                    val current = voiceState
-                    if (current is VoicePromptState.Processing) {
-                        voiceState = VoicePromptState.Processing(current.streaming + piece)
-                    }
-                }
-            }.getOrElse {
-                voiceState = VoicePromptState.Error("Error: ${it.message ?: it::class.simpleName}")
-                return@launch
-            }
-            voiceState = when (outcome) {
-                is QAgentOutcome.Handled -> {
-                    val res = outcome.result
-                    if (res is QCommandResult.FilterSorted) onFilterSortApplied(res.spec)
-                    VoicePromptState.Done(res.message)
-                }
-
-                is QAgentOutcome.ParseFailed ->
-                    VoicePromptState.Error("Couldn't parse LLM output: ${outcome.reason}")
-            }
-        }
-    }
 
     Scaffold(
         topBar = {
@@ -206,12 +117,12 @@ fun QListScreen(
                                 tryAwaitRelease()
                                 if (longPressActive) {
                                     longPressActive = false
-                                    endLongPress()
+                                    vm.endLongPress()
                                 }
                             },
                             onLongPress = {
                                 longPressActive = true
-                                beginLongPress()
+                                vm.beginLongPress()
                             },
                         )
                     },
@@ -270,10 +181,7 @@ fun QListScreen(
         }
     }
 
-    QVoicePromptDialog(
-        state = voiceState,
-        onDismiss = { voiceState = VoicePromptState.Idle },
-    )
+    QVoicePromptDialog(state = voiceState, onDismiss = vm::dismissDialog)
 }
 
 /**

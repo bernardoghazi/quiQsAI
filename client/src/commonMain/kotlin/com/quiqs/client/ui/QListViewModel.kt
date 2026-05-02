@@ -1,0 +1,145 @@
+package com.quiqs.client.ui
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.quiqs.client.AgentProvider
+import com.quiqs.client.AgentStatus
+import com.quiqs.client.audio.AudioRecorder
+import com.quiqs.client.audio.RecorderProvider
+import com.quiqs.client.audio.RecorderStatus
+import com.quiqs.client.ui.components.VoicePromptState
+import com.quiqs.shared.QFilterSort
+import com.quiqs.shared.llm.QAgent
+import com.quiqs.shared.llm.QAgentOutcome
+import com.quiqs.shared.llm.QCommandResult
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+
+/**
+ * Holds the list-screen FAB voice-prompt state machine.
+ *
+ * Compose obtains the instance via `viewModel { ... }`, so the recording/processing
+ * lifecycle survives recomposition (and Android config changes) without leaking back
+ * into the composable. Communication out:
+ *  - [voiceState]: drives [com.quiqs.client.ui.components.QVoicePromptDialog]
+ *  - [filterSortApplied]: one-shot effect emitted when the LLM returns a filter+sort
+ *    command — the screen forwards each value into the app's spec holder.
+ */
+class QListViewModel(
+    private val agentProvider: AgentProvider,
+    private val recorderProvider: RecorderProvider,
+) : ViewModel() {
+
+    private val _voiceState = MutableStateFlow<VoicePromptState>(VoicePromptState.Idle)
+    val voiceState: StateFlow<VoicePromptState> = _voiceState.asStateFlow()
+
+    private val _filterSortApplied = Channel<QFilterSort>(capacity = 8, BufferOverflow.DROP_OLDEST)
+    val filterSortApplied: Flow<QFilterSort> = _filterSortApplied.receiveAsFlow()
+
+    private var agent: QAgent? = null
+    private var agentError: String? = null
+    private var activeRecorder: AudioRecorder? = null
+
+    init {
+        viewModelScope.launch {
+            try {
+                when (val r = agentProvider.get()) {
+                    is AgentStatus.Available -> agent = r.agent
+                    is AgentStatus.Unavailable -> agentError = r.reason
+                }
+            } catch (t: Throwable) {
+                agentError = t.message ?: t::class.simpleName ?: "Failed to initialize LLM"
+            }
+        }
+    }
+
+    /**
+     * Long-press fired on the FAB: open the dialog, acquire a recorder, start capture.
+     * Audio start is suspend; a release that lands before [AudioRecorder.start] returns
+     * is handled by [endLongPress] checking [activeRecorder].
+     */
+    fun beginLongPress() {
+        if (agent == null) {
+            _voiceState.value = VoicePromptState.Error(agentError ?: "LLM is still loading.")
+            return
+        }
+        _voiceState.value = VoicePromptState.Recording
+        viewModelScope.launch {
+            when (val r = recorderProvider.get()) {
+                is RecorderStatus.Available -> {
+                    activeRecorder = r.recorder
+                    runCatching { r.recorder.start() }.onFailure {
+                        activeRecorder = null
+                        _voiceState.value =
+                            VoicePromptState.Error(it.message ?: "Failed to start recorder.")
+                    }
+                }
+
+                is RecorderStatus.PermissionRequired ->
+                    _voiceState.value = VoicePromptState.Error("Microphone permission denied.")
+
+                is RecorderStatus.Unavailable ->
+                    _voiceState.value = VoicePromptState.Error(r.reason)
+            }
+        }
+    }
+
+    /**
+     * Long-press released: stop capture, run the LLM, settle on [VoicePromptState.Done]
+     * (or [VoicePromptState.Error]). A [QCommandResult.FilterSorted] outcome is emitted
+     * via [filterSortApplied] so the screen can update the app's filter spec.
+     */
+    fun endLongPress() {
+        viewModelScope.launch {
+            val rec = activeRecorder ?: return@launch
+            val path = runCatching { rec.stop() }.getOrElse { err ->
+                activeRecorder = null
+                _voiceState.value =
+                    VoicePromptState.Error(err.message ?: "Failed to stop recorder.")
+                return@launch
+            }
+            activeRecorder = null
+            val a = agent ?: run {
+                _voiceState.value = VoicePromptState.Error("LLM not available.")
+                return@launch
+            }
+            _voiceState.value = VoicePromptState.Processing("")
+            val outcome = runCatching {
+                a.newOrFilterFromVoice(path) { piece ->
+                    _voiceState.update { current ->
+                        if (current is VoicePromptState.Processing) {
+                            VoicePromptState.Processing(current.streaming + piece)
+                        } else {
+                            current
+                        }
+                    }
+                }
+            }.getOrElse {
+                _voiceState.value =
+                    VoicePromptState.Error("Error: ${it.message ?: it::class.simpleName}")
+                return@launch
+            }
+            _voiceState.value = when (outcome) {
+                is QAgentOutcome.Handled -> {
+                    val res = outcome.result
+                    if (res is QCommandResult.FilterSorted) _filterSortApplied.trySend(res.spec)
+                    VoicePromptState.Done(res.message)
+                }
+
+                is QAgentOutcome.ParseFailed ->
+                    VoicePromptState.Error("Couldn't parse LLM output: ${outcome.reason}")
+            }
+        }
+    }
+
+    fun dismissDialog() {
+        _voiceState.value = VoicePromptState.Idle
+    }
+}
