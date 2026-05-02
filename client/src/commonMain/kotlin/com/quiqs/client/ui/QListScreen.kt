@@ -9,11 +9,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -121,8 +122,10 @@ fun QListScreen(
                         voiceState = VoicePromptState.Error(it.message ?: "Failed to start recorder.")
                     }
                 }
+
                 is RecorderStatus.PermissionRequired ->
                     voiceState = VoicePromptState.Error("Microphone permission denied.")
+
                 is RecorderStatus.Unavailable ->
                     voiceState = VoicePromptState.Error(r.reason)
             }
@@ -169,6 +172,7 @@ fun QListScreen(
                     if (res is QCommandResult.FilterSorted) onFilterSortApplied(res.spec)
                     VoicePromptState.Done(res.message)
                 }
+
                 is QAgentOutcome.ParseFailed ->
                     VoicePromptState.Error("Couldn't parse LLM output: ${outcome.reason}")
             }
@@ -188,34 +192,41 @@ fun QListScreen(
             )
         },
         floatingActionButton = {
-            FloatingActionButton(
-                // Tap is reserved for the long-press flow; gesture handling lives in
-                // pointerInput so we can react to both press and release.
-                onClick = {},
-                containerColor = MaterialTheme.colorScheme.primary,
+            // Hand-rolled FAB: Material3's FloatingActionButton wraps a clickable Surface
+            // whose internal detectTapAndPress consumes the pointer-down event, which
+            // prevents our outer detectTapGestures from ever firing onLongPress. Using a
+            // non-clickable Surface keeps our pointerInput as the sole gesture handler.
+            Surface(
+                modifier = Modifier
+                    .size(56.dp)
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onPress = {
+                                // Awaits until press is released.
+                                tryAwaitRelease()
+                                if (longPressActive) {
+                                    longPressActive = false
+                                    endLongPress()
+                                }
+                            },
+                            onLongPress = {
+                                longPressActive = true
+                                beginLongPress()
+                            },
+                        )
+                    },
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
-                modifier = Modifier.pointerInput(Unit) {
-                    detectTapGestures(
-                        onPress = {
-                            // Awaits until press is released.
-                            tryAwaitRelease()
-                            if (longPressActive) {
-                                longPressActive = false
-                                endLongPress()
-                            }
-                        },
-                        onLongPress = {
-                            longPressActive = true
-                            beginLongPress()
-                        },
-                    )
-                },
+                shadowElevation = 6.dp,
             ) {
-                Icon(
-                    imageVector = AudioWaveformIcon,
-                    contentDescription = "Hold to record voice prompt",
-                    modifier = Modifier.size(24.dp),
-                )
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = AudioWaveformIcon,
+                        contentDescription = "Hold to record voice prompt",
+                        modifier = Modifier.size(24.dp),
+                    )
+                }
             }
         },
         bottomBar = {
