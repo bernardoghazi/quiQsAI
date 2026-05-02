@@ -3,6 +3,7 @@ package com.quiqs.client.ui.components
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -53,7 +54,9 @@ fun QBottomBar(
                 Icon(
                     painter = painterResource(Res.drawable.filter),
                     contentDescription = "Filter and sort",
-                    modifier = Modifier.size(22.dp),
+                    modifier = Modifier
+                        .size(22.dp)
+                        .offset(x = 1.dp, y = 1.dp),
                 )
             }
             FilledTonalIconButton(onClick = onAdd) {
@@ -74,6 +77,7 @@ fun QBottomBar(
     }
 }
 
+// TODO: use svg.
 /** Three-dot vertical glyph used by the overflow action. */
 private val MoreVertIcon: ImageVector = ImageVector.Builder(
     name = "MoreVert",
