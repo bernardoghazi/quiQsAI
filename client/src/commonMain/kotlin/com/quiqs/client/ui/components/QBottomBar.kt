@@ -19,6 +19,9 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.unit.dp
+import quiqsai.client.generated.resources.Res
+import quiqsai.client.generated.resources.filter_sort
+import org.jetbrains.compose.resources.painterResource
 
 /**
  * Bottom action bar shown on the list screen. Pill-shaped surface with three right-aligned
@@ -47,7 +50,7 @@ fun QBottomBar(
         ) {
             FilledTonalIconButton(onClick = onFilterSort) {
                 Icon(
-                    imageVector = FilterSortIcon,
+                    painter = painterResource(Res.drawable.filter_sort),
                     contentDescription = "Filter and sort",
                     modifier = Modifier.size(22.dp),
                 )
@@ -69,41 +72,6 @@ fun QBottomBar(
         }
     }
 }
-
-/**
- * Funnel + up/down-arrow glyph used by the filter & sort action. Inline to avoid pulling
- * in `material-icons-extended` for a single icon (same rationale as `RepeatIcon`).
- */
-private val FilterSortIcon: ImageVector = ImageVector.Builder(
-    name = "FilterSort",
-    defaultWidth = 24.dp,
-    defaultHeight = 24.dp,
-    viewportWidth = 24f,
-    viewportHeight = 24f,
-).apply {
-    path(fill = SolidColor(Color.Black)) {
-        // Funnel.
-        moveTo(3f, 4f)
-        horizontalLineTo(13f)
-        lineTo(9.5f, 11f)
-        verticalLineTo(15.5f)
-        lineTo(6.5f, 17.5f)
-        verticalLineTo(11f)
-        close()
-        // Up-down arrow on the right.
-        moveTo(17f, 4f)
-        lineTo(14f, 8f)
-        horizontalLineTo(16f)
-        verticalLineTo(16f)
-        horizontalLineTo(14f)
-        lineTo(17f, 20f)
-        lineTo(20f, 16f)
-        horizontalLineTo(18f)
-        verticalLineTo(8f)
-        horizontalLineTo(20f)
-        close()
-    }
-}.build()
 
 /** Plus glyph used by the add action. */
 private val AddIcon: ImageVector = ImageVector.Builder(
