@@ -20,7 +20,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.unit.dp
 import quiqsai.client.generated.resources.Res
-import quiqsai.client.generated.resources.filter_sort
+import quiqsai.client.generated.resources.filter
+import quiqsai.client.generated.resources.plus
 import org.jetbrains.compose.resources.painterResource
 
 /**
@@ -50,16 +51,16 @@ fun QBottomBar(
         ) {
             FilledTonalIconButton(onClick = onFilterSort) {
                 Icon(
-                    painter = painterResource(Res.drawable.filter_sort),
+                    painter = painterResource(Res.drawable.filter),
                     contentDescription = "Filter and sort",
                     modifier = Modifier.size(22.dp),
                 )
             }
             FilledTonalIconButton(onClick = onAdd) {
                 Icon(
-                    imageVector = AddIcon,
+                    painter = painterResource(Res.drawable.plus),
                     contentDescription = "Add Q",
-                    modifier = Modifier.size(22.dp),
+                    modifier = Modifier.size(16.dp),
                 )
             }
             IconButton(onClick = onOverflow) {
@@ -72,31 +73,6 @@ fun QBottomBar(
         }
     }
 }
-
-/** Plus glyph used by the add action. */
-private val AddIcon: ImageVector = ImageVector.Builder(
-    name = "Add",
-    defaultWidth = 24.dp,
-    defaultHeight = 24.dp,
-    viewportWidth = 24f,
-    viewportHeight = 24f,
-).apply {
-    path(fill = SolidColor(Color.Black)) {
-        moveTo(19f, 13f)
-        horizontalLineTo(13f)
-        verticalLineTo(19f)
-        horizontalLineTo(11f)
-        verticalLineTo(13f)
-        horizontalLineTo(5f)
-        verticalLineTo(11f)
-        horizontalLineTo(11f)
-        verticalLineTo(5f)
-        horizontalLineTo(13f)
-        verticalLineTo(11f)
-        horizontalLineTo(19f)
-        close()
-    }
-}.build()
 
 /** Three-dot vertical glyph used by the overflow action. */
 private val MoreVertIcon: ImageVector = ImageVector.Builder(
