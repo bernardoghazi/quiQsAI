@@ -29,9 +29,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -44,6 +41,9 @@ import com.quiqs.shared.QFilterSort
 import com.quiqs.shared.QRepository
 import com.quiqs.shared.applyTo
 import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.painterResource
+import quiqsai.client.generated.resources.Res
+import quiqsai.client.generated.resources.wave
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
@@ -110,7 +110,7 @@ fun QListScreen(
             // non-clickable Surface keeps our pointerInput as the sole gesture handler.
             Surface(
                 modifier = Modifier
-                    .size(56.dp)
+                    .size(52.dp)
                     .pointerInput(Unit) {
                         detectTapGestures(
                             onPress = {
@@ -127,16 +127,17 @@ fun QListScreen(
                             },
                         )
                     },
-                shape = RoundedCornerShape(16.dp),
-                color = MaterialTheme.colorScheme.primary,
+                shape = RoundedCornerShape(10.dp),
+                color = Color(0XFFD85A00),
                 contentColor = MaterialTheme.colorScheme.onPrimary,
                 shadowElevation = 6.dp,
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
-                        imageVector = AudioWaveformIcon,
-                        contentDescription = "Hold to record voice prompt",
-                        modifier = Modifier.size(24.dp),
+                        painter = painterResource(Res.drawable.wave),
+                        contentDescription = "Hold to record voice prompt to add Qs or edit filter and sort.",
+                        tint = Color(0xFF000000),
+                        modifier = Modifier.size(24.dp)
                     )
                 }
             }
@@ -184,26 +185,3 @@ fun QListScreen(
 
     QVoicePromptDialog(state = voiceState, onDismiss = vm::dismissDialog)
 }
-
-/**
- * Five-bar audio level glyph used by the voice-prompt FAB. Inline to avoid pulling in
- * `material-icons-extended` (same rationale as `RepeatIcon` in `QAlarmLabel`).
- *
- * Bar layout in the 24×24 viewport: heights 4-12-20-12-4 px, centered vertically,
- * spaced 4 px apart starting at x=3.
- */
-private val AudioWaveformIcon: ImageVector = ImageVector.Builder(
-    name = "AudioWaveform",
-    defaultWidth = 24.dp,
-    defaultHeight = 24.dp,
-    viewportWidth = 24f,
-    viewportHeight = 24f,
-).apply {
-    path(fill = SolidColor(Color.Black)) {
-        moveTo(3f, 10f); horizontalLineTo(5f); verticalLineTo(14f); horizontalLineTo(3f); close()
-        moveTo(7f, 6f); horizontalLineTo(9f); verticalLineTo(18f); horizontalLineTo(7f); close()
-        moveTo(11f, 2f); horizontalLineTo(13f); verticalLineTo(22f); horizontalLineTo(11f); close()
-        moveTo(15f, 6f); horizontalLineTo(17f); verticalLineTo(18f); horizontalLineTo(15f); close()
-        moveTo(19f, 10f); horizontalLineTo(21f); verticalLineTo(14f); horizontalLineTo(19f); close()
-    }
-}.build()

@@ -14,7 +14,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
@@ -70,7 +69,7 @@ fun QBottomBar(
     val plainIconTint = if (isDark) Color(0xFFEDEDED) else Color(0xFF1A1A1A)
 
     Row(
-        modifier = modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+        modifier = modifier.fillMaxWidth().background(Color(0xFF101010)).padding(start = 16.dp, top = 4.dp, end = 0.dp, bottom = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         ViewModeGroup(
@@ -189,9 +188,7 @@ private fun FilledSquareButton(
                 painter = painterResource(drawable),
                 contentDescription = contentDescription,
                 tint = tint,
-                modifier = Modifier
-                    .size(iconSize)
-                    .offset(x = iconOffset.x, y = iconOffset.y),
+                modifier = Modifier.size(iconSize).offset(x = iconOffset.x, y = iconOffset.y),
             )
         }
     }
