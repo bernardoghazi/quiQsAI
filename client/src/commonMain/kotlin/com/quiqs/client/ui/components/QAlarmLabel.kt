@@ -4,7 +4,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -15,13 +14,13 @@ import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.unit.dp
 import com.quiqs.shared.Alarm
 import com.quiqs.shared.nextRecurringInstant
-import kotlin.time.Clock
-import kotlin.time.Instant
 import kotlinx.datetime.DayOfWeek
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.Month
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
+import kotlin.time.Clock
+import kotlin.time.Instant
 
 /**
  * Shows the user-facing label for a single [Alarm], optionally prefixed with a repeat
@@ -31,22 +30,22 @@ import kotlinx.datetime.toLocalDateTime
 fun QAlarmLabel(
     alarm: Alarm,
     modifier: Modifier = Modifier,
-    color: Color = MaterialTheme.colorScheme.onSurfaceVariant,
+    color: Color = Color(0XFFB8B8B8),
 ) {
     Row(
         modifier = modifier,
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
+        QText(text = alarm.formatLabel(), role = QTextRole.Alarm, color = color)
         if (alarm is Alarm.RecurringTime) {
             Icon(
                 imageVector = RepeatIcon,
                 contentDescription = "Recurring",
-                tint = color,
+                tint = Color(0XFF3F3F3F),
                 modifier = Modifier.size(14.dp),
             )
         }
-        QText(text = alarm.formatLabel(), role = QTextRole.Alarm, color = color)
     }
 }
 
@@ -62,6 +61,7 @@ private fun Alarm.formatLabel(): String = when (this) {
         val next = nextRecurringInstant(rule, Clock.System.now(), tz)
         if (next != null) formatRelativeDateTime(next) else rule
     }
+
     is Alarm.Geofence -> "Near $latitude, $longitude"
 }
 
