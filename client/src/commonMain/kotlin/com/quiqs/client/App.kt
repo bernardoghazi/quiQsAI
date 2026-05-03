@@ -121,5 +121,5 @@ private val QuiqsBackgroundBrush = Brush.radialGradient(
 private val QuiqsDarkBackgroundBrush = Brush.radialGradient(
     center = Offset(0f, 0f),
     radius = 3000F,
-    colors = listOf(Color(0xFF141414), Color(0xFF000000)),
+    colors = listOf(Color(0xFF101010), Color(0xFF000000)),
 )
