@@ -18,8 +18,8 @@ private data class BadgeColors(val bg: Color, val fg: Color)
 
 private fun colorsFor(tone: QBadgeTone): BadgeColors = when (tone) {
     QBadgeTone.Neutral -> BadgeColors(
-        bg = Color(0xFFEEF1F5),
-        fg = Color(0xFF5F6B7A),
+        bg = Color(0xFF161616),
+        fg = Color(0xFF666666),
     )
     QBadgeTone.High -> BadgeColors(
         bg = Color(0xFF200C0C),

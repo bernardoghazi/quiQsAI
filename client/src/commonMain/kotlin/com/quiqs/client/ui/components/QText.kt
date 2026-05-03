@@ -30,7 +30,7 @@ fun QText(
 ) {
     val style = when (role) {
         QTextRole.Title -> TextStyle(fontSize = 14.sp, fontWeight = FontWeight.Medium)
-        QTextRole.Alarm -> TextStyle(fontSize = 13.sp, fontStyle = FontStyle.Italic)
+        QTextRole.Alarm -> TextStyle(fontSize = 12.sp, fontStyle = FontStyle.Italic)
         QTextRole.Badge -> TextStyle(fontSize = 12.sp, fontStyle = FontStyle.Italic)
     }
     Text(

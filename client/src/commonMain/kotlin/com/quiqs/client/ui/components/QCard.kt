@@ -117,7 +117,7 @@ private fun QCardPreview() {
     val sample = Q(
         id = Uuid.parse("00000000-0000-0000-0000-000000000001"),
         text = "Pick up Stella from school",
-        tags = listOf("family", "afternoon"),
+        tags = listOf("family", "personal"),
         alarms = listOf(Alarm.OneOffTime(at = now)),
         priority = Priority.HIGH,
         completed = false,
@@ -149,7 +149,7 @@ private fun QCardDarkPreview() {
     val sample = Q(
         id = Uuid.parse("00000000-0000-0000-0000-000000000001"),
         text = "Pick up Stella from school",
-        tags = listOf("family", "afternoon"),
+        tags = listOf("family", "personal"),
         alarms = listOf(Alarm.OneOffTime(at = now)),
         priority = Priority.HIGH,
         completed = false,
