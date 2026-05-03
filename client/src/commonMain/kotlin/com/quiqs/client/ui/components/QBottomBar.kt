@@ -1,18 +1,21 @@
 package com.quiqs.client.ui.components
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -20,8 +23,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
+import com.quiqs.client.LocalThemeIsDark
 import org.jetbrains.compose.resources.painterResource
 import quiqsai.client.generated.resources.Res
 import quiqsai.client.generated.resources.filter
@@ -107,11 +111,28 @@ private val MoreVertIcon: ImageVector = ImageVector.Builder(
 @Composable
 private fun QBottomBarPreview() {
     MaterialTheme {
-        QBottomBar(
-            onFilterSort = {},
-            onAdd = {},
-            onOverflow = {},
-//            modifier = Modifier.padding(12.dp),
-        )
+        Box(modifier = Modifier.background(color = Color(0xFF111111))) {
+            QBottomBar(
+                onFilterSort = {},
+                onAdd = {},
+                onOverflow = {},
+            )
+        }
+    }
+}
+
+@Preview
+@Composable
+private fun QBottomBarPreviewDark() {
+    CompositionLocalProvider(LocalThemeIsDark provides true) {
+        MaterialTheme(colorScheme = darkColorScheme()) {
+            Box(modifier = Modifier.background(color = Color(0xFF111111))) {
+                QBottomBar(
+                    onFilterSort = {},
+                    onAdd = {},
+                    onOverflow = {},
+                )
+            }
+        }
     }
 }
