@@ -91,6 +91,7 @@ fun QListScreen(
     var longPressActive by remember { mutableStateOf(false) }
 
     Scaffold(
+        containerColor = Color.Transparent,
         topBar = {
             TopAppBar(
                 title = { Text("quiQs") },

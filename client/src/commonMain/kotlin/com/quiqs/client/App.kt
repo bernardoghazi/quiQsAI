@@ -1,11 +1,21 @@
 package com.quiqs.client
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.geometry.Offset
 import com.quiqs.client.audio.NoRecorder
 import com.quiqs.client.audio.RecorderProvider
 import com.quiqs.client.ui.QDetailScreen
@@ -31,34 +41,73 @@ fun App(
 ) {
     var route by remember { mutableStateOf<Route>(Route.List) }
     var filterSort by remember { mutableStateOf(QFilterSort()) }
-    MaterialTheme {
-        when (val current = route) {
-            is Route.List -> QListScreen(
-                repository = repository,
-                filterSort = filterSort,
-                agentProvider = agentProvider,
-                recorderProvider = recorderProvider,
-                onOpenQ = { id -> route = Route.Detail(id = id) },
-                onQueryQs = { route = Route.Prompt(PromptMode.Query) },
-                onFilterSortApplied = { spec -> filterSort = spec },
-                onClearFilterSort = { filterSort = QFilterSort() },
-            )
-            is Route.Detail -> QDetailScreen(
-                repository = repository,
-                qId = current.id,
-                onBack = { route = Route.List },
-                onEditWithAi = { id -> route = Route.Prompt(PromptMode.Edit(id)) },
-            )
-            is Route.Prompt -> QPromptScreen(
-                agentProvider = agentProvider,
-                recorderProvider = recorderProvider,
-                mode = current.mode,
-                onBack = { route = Route.List },
-                onFilterSortApplied = { spec ->
-                    filterSort = spec
-                    route = Route.List
-                },
-            )
+    val dark = isSystemInDarkTheme()
+    val scheme = if (dark) QuiqsDarkColorScheme else QuiqsColorScheme
+    val backgroundBrush = if (dark) QuiqsDarkBackgroundBrush else QuiqsBackgroundBrush
+    MaterialTheme(colorScheme = scheme) {
+        Box(modifier = Modifier.fillMaxSize().background(backgroundBrush)) {
+            when (val current = route) {
+                is Route.List -> QListScreen(
+                    repository = repository,
+                    filterSort = filterSort,
+                    agentProvider = agentProvider,
+                    recorderProvider = recorderProvider,
+                    onOpenQ = { id -> route = Route.Detail(id = id) },
+                    onQueryQs = { route = Route.Prompt(PromptMode.Query) },
+                    onFilterSortApplied = { spec -> filterSort = spec },
+                    onClearFilterSort = { filterSort = QFilterSort() },
+                )
+
+                is Route.Detail -> QDetailScreen(
+                    repository = repository,
+                    qId = current.id,
+                    onBack = { route = Route.List },
+                    onEditWithAi = { id -> route = Route.Prompt(PromptMode.Edit(id)) },
+                )
+
+                is Route.Prompt -> QPromptScreen(
+                    agentProvider = agentProvider,
+                    recorderProvider = recorderProvider,
+                    mode = current.mode,
+                    onBack = { route = Route.List },
+                    onFilterSortApplied = { spec ->
+                        filterSort = spec
+                        route = Route.List
+                    },
+                )
+            }
         }
     }
 }
+
+/**
+ * App-wide Material color scheme. The `background` and `surface` slots set the page
+ * fill that every `Scaffold` (and tonally-elevated surface) inherits — change them
+ * here, not at each call site.
+ */
+private val QuiqsColorScheme = lightColorScheme(
+    background = Color(0xFFF7F4EE),
+    surface = Color(0xFFF7F4EE),
+)
+
+private val QuiqsDarkColorScheme = darkColorScheme(
+    background = Color(0xFF15140F),
+    surface = Color(0xFF1C1B16),
+)
+
+/**
+ * Page-fill gradients painted by the root [App] [Box]. Each [androidx.compose.material3.Scaffold]
+ * passes `containerColor = Color.Transparent` so the gradient stays visible behind the
+ * top bar / bottom bar / FAB slots — Material's tonal `surface` colors keep cards,
+ * dialogs, and tonal-icon buttons opaque on top.
+ */
+private val QuiqsBackgroundBrush = Brush.radialGradient(
+    center = Offset(0f, 0f),
+    colors = listOf(Color(0xFFE8E8E8), Color(0xFF9A9A9A)),
+)
+
+private val QuiqsDarkBackgroundBrush = Brush.radialGradient(
+    center = Offset(0f, 0f),
+    radius = 3000F,
+    colors = listOf(Color(0xFF212121), Color(0xFF000000)),
+)
