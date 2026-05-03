@@ -14,23 +14,20 @@ import androidx.compose.ui.unit.dp
 /** Color treatment for [QBadge]. High = red-tinted, Neutral/Low = grey. */
 enum class QBadgeTone { Neutral, High, Low }
 
-private data class BadgeColors(val bg: Color, val fg: Color, val border: Color)
+private data class BadgeColors(val bg: Color, val fg: Color)
 
 private fun colorsFor(tone: QBadgeTone): BadgeColors = when (tone) {
     QBadgeTone.Neutral -> BadgeColors(
         bg = Color(0xFFEEF1F5),
         fg = Color(0xFF5F6B7A),
-        border = Color(0xFFD7DEE6),
     )
     QBadgeTone.High -> BadgeColors(
-        bg = Color(0xFFFDEAEA),
-        fg = Color(0xFFC2384B),
-        border = Color(0xFFF4C0C7),
+        bg = Color(0xFF200C0C),
+        fg = Color(0xFFA34949),
     )
     QBadgeTone.Low -> BadgeColors(
         bg = Color(0xFFF1F4F8),
         fg = Color(0xFF8893A1),
-        border = Color(0xFFDDE3EB),
     )
 }
 
@@ -41,13 +38,12 @@ fun QBadge(
     tone: QBadgeTone = QBadgeTone.Neutral,
     modifier: Modifier = Modifier,
 ) {
-    val (bg, fg, borderColor) = colorsFor(tone)
-    val shape = RoundedCornerShape(50)
+    val (bg, fg) = colorsFor(tone)
+    val shape = RoundedCornerShape(26)
     Box(
         modifier = modifier
             .clip(shape)
             .background(bg)
-            .border(width = 1.dp, color = borderColor, shape = shape)
             .padding(horizontal = 10.dp, vertical = 3.dp),
     ) {
         QText(text = label, role = QTextRole.Badge, color = fg)

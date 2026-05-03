@@ -33,7 +33,7 @@ fun QCheckbox(
     val fillColor = if (checked) MaterialTheme.colorScheme.primary else Color.Transparent
     Box(
         modifier = modifier
-            .size(22.dp)
+            .size(16.dp)
             .clip(CircleShape)
             .toggleable(value = checked, onValueChange = onCheckedChange, role = null)
             .border(width = 1.5.dp, color = borderColor, shape = CircleShape)

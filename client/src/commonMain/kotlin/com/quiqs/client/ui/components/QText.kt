@@ -29,7 +29,7 @@ fun QText(
     overflow: TextOverflow = TextOverflow.Clip,
 ) {
     val style = when (role) {
-        QTextRole.Title -> TextStyle(fontSize = 16.sp, fontWeight = FontWeight.Medium)
+        QTextRole.Title -> TextStyle(fontSize = 14.sp, fontWeight = FontWeight.Medium)
         QTextRole.Alarm -> TextStyle(fontSize = 13.sp, fontStyle = FontStyle.Italic)
         QTextRole.Badge -> TextStyle(fontSize = 12.sp, fontStyle = FontStyle.Italic)
     }
