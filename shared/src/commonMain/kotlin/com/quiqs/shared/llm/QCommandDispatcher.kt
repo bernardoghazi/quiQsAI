@@ -84,6 +84,7 @@ class QCommandDispatcher(private val repository: QRepository) {
             if (spec.tags.isNotEmpty()) add("tags=${spec.tags.joinToString(",")}")
             if (spec.priorities.isNotEmpty()) add("priority=${spec.priorities.joinToString(",") { it.wire }}")
             if (spec.alarm != QFilterSort.AlarmFilter.ANY) add("alarm=${spec.alarm.name.lowercase()}")
+            if (spec.alarmWindow != QFilterSort.AlarmWindow.ANY) add("when=${spec.alarmWindow.name.lowercase()}")
             if (spec.completed != QFilterSort.CompletedFilter.ANY) add("completed=${spec.completed.name.lowercase()}")
             add("sort=${spec.sortBy.name.lowercase()} ${spec.sortDir.name.lowercase()}")
         }

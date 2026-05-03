@@ -176,6 +176,7 @@ class LlmPromptBuilder(
                 "tags": [<string>...],
                 "priorities": [<"high"|"medium"|"low">...],
                 "alarm": <"any"|"none"|"any_set"|"recurring"|"one_off"|"geofence">,
+                "alarmWindow": <"any"|"today"|"tomorrow"|"this_week"|"next_week">,
                 "completed": <"any"|"only_open"|"only_done">,
                 "sortBy": <"tags"|"priority"|"created_at"|"updated_at"|"alarm">,
                 "sortDir": <"asc"|"desc">
@@ -199,16 +200,24 @@ class LlmPromptBuilder(
             - priorities: only Qs whose priority is in the list.
             - alarm: filter by alarm shape (any=no filter, none=no alarms, any_set=has alarms,
               recurring/one_off/geofence=has that kind).
+            - alarmWindow: keep only Qs whose next alarm fires within a relative window —
+              today/tomorrow/this_week/next_week. Stored as a token, re-resolved against
+              the current day on every evaluation, so the result stays "always right".
+              Weeks start Sunday. any=no window filter.
             - completed: only_open hides done Qs; only_done shows only done Qs; any=both.
             FilterSort defaults: text=null, tags=[], priorities=[], alarm="any",
-            completed="only_open", sortBy="created_at", sortDir="desc". Omit fields the
-            user did not mention. Empty spec {} clears any active filter.
+            alarmWindow="any", completed="only_open", sortBy="created_at", sortDir="desc".
+            Omit fields the user did not mention. Empty spec {} clears any active filter.
 
             FilterSort mapping shortcuts:
             - "high priority" / "urgent" → priorities=["high"]
             - "completed" / "done" → completed="only_done"; "open"/"todo" → "only_open"
             - "no alarms" → alarm="none"; "with alarms" → alarm="any_set"
             - "recurring" → alarm="recurring"; "one-off" → alarm="one_off"
+            - "today" / "today's Qs" / "due today" → alarmWindow="today"
+            - "tomorrow" / "tomorrow's Qs" → alarmWindow="tomorrow"
+            - "this week" → alarmWindow="this_week"
+            - "next week" → alarmWindow="next_week"
             - "next alarm" / "upcoming" / "soonest" → sortBy="alarm", sortDir="asc"
             - "newest first" → sortBy="created_at", sortDir="desc"
             - "oldest first" → sortBy="created_at", sortDir="asc"
@@ -237,6 +246,12 @@ class LlmPromptBuilder(
 
               "hide done tasks"
               → {"type":"filterSort","spec":{"completed":"only_open"}}
+
+              "show me today's Qs"
+              → {"type":"filterSort","spec":{"alarmWindow":"today"}}
+
+              "what do I have next week"
+              → {"type":"filterSort","spec":{"alarmWindow":"next_week"}}
 
               "clear filters"
               → {"type":"filterSort","spec":{}}

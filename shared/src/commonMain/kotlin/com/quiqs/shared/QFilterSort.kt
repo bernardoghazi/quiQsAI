@@ -2,7 +2,14 @@ package com.quiqs.shared
 
 import kotlin.time.Clock
 import kotlin.time.Instant
+import kotlinx.datetime.DateTimeUnit
+import kotlinx.datetime.DayOfWeek
 import kotlinx.datetime.TimeZone
+import kotlinx.datetime.atStartOfDayIn
+import kotlinx.datetime.isoDayNumber
+import kotlinx.datetime.minus
+import kotlinx.datetime.plus
+import kotlinx.datetime.toLocalDateTime
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -20,6 +27,7 @@ data class QFilterSort(
     val tags: List<String> = emptyList(),
     val priorities: List<Priority> = emptyList(),
     val alarm: AlarmFilter = AlarmFilter.ANY,
+    val alarmWindow: AlarmWindow = AlarmWindow.ANY,
     val completed: CompletedFilter = CompletedFilter.ANY,
     val sortBy: SortField = SortField.CREATED_AT,
     val sortDir: SortDir = SortDir.DESC,
@@ -32,6 +40,21 @@ data class QFilterSort(
         @SerialName("recurring") RECURRING,
         @SerialName("one_off") ONE_OFF,
         @SerialName("geofence") GEOFENCE,
+    }
+
+    /**
+     * Relative time windows for alarm-date filtering. Stored as relative tokens — not
+     * absolute instants — so `applyTo` re-resolves the bounds against the current
+     * `now` + `tz` on every evaluation. That keeps a saved spec "always right" (today
+     * always means *today*).
+     */
+    @Serializable
+    enum class AlarmWindow {
+        @SerialName("any") ANY,
+        @SerialName("today") TODAY,
+        @SerialName("tomorrow") TOMORROW,
+        @SerialName("this_week") THIS_WEEK,
+        @SerialName("next_week") NEXT_WEEK,
     }
 
     @Serializable
@@ -58,7 +81,8 @@ data class QFilterSort(
 
     val isDefault: Boolean
         get() = text.isNullOrBlank() && tags.isEmpty() && priorities.isEmpty() &&
-            alarm == AlarmFilter.ANY && completed == CompletedFilter.ANY &&
+            alarm == AlarmFilter.ANY && alarmWindow == AlarmWindow.ANY &&
+            completed == CompletedFilter.ANY &&
             sortBy == SortField.CREATED_AT && sortDir == SortDir.DESC
 }
 
@@ -95,6 +119,13 @@ fun QFilterSort.applyTo(
         QFilterSort.AlarmFilter.ONE_OFF -> result.filter { q -> q.alarms.any { it is Alarm.OneOffTime } }
         QFilterSort.AlarmFilter.GEOFENCE -> result.filter { q -> q.alarms.any { it is Alarm.Geofence } }
     }
+    val window = alarmWindow.boundsIn(now, tz)
+    if (window != null) {
+        result = result.filter { q ->
+            val next = q.nextAlarmInstant(now, tz)
+            next != null && next >= window.first && next < window.second
+        }
+    }
     result = when (completed) {
         QFilterSort.CompletedFilter.ANY -> result
         QFilterSort.CompletedFilter.ONLY_OPEN -> result.filter { !it.completed }
@@ -129,3 +160,37 @@ private fun Q.nextAlarmInstant(now: Instant, tz: TimeZone): Instant? =
             is Alarm.Geofence -> null
         }
     }.minOrNull()
+
+/**
+ * Resolves the relative window into a half-open `[start, endExclusive)` instant range
+ * in [tz], or `null` for [QFilterSort.AlarmWindow.ANY] (no window filter).
+ *
+ * Day boundaries are calendar-day in [tz]. Weeks are Monday-start (ISO 8601).
+ */
+private fun QFilterSort.AlarmWindow.boundsIn(
+    now: Instant,
+    tz: TimeZone,
+): Pair<Instant, Instant>? {
+    if (this == QFilterSort.AlarmWindow.ANY) return null
+    val today = now.toLocalDateTime(tz).date
+    val (start, endExclusive) = when (this) {
+        QFilterSort.AlarmWindow.TODAY ->
+            today to today.plus(1, DateTimeUnit.DAY)
+        QFilterSort.AlarmWindow.TOMORROW ->
+            today.plus(1, DateTimeUnit.DAY) to today.plus(2, DateTimeUnit.DAY)
+        QFilterSort.AlarmWindow.THIS_WEEK -> {
+            val mondayOfThisWeek = today.minus(today.dayOfWeek.daysFromMonday(), DateTimeUnit.DAY)
+            mondayOfThisWeek to mondayOfThisWeek.plus(7, DateTimeUnit.DAY)
+        }
+        QFilterSort.AlarmWindow.NEXT_WEEK -> {
+            val mondayOfNextWeek = today
+                .minus(today.dayOfWeek.daysFromMonday(), DateTimeUnit.DAY)
+                .plus(7, DateTimeUnit.DAY)
+            mondayOfNextWeek to mondayOfNextWeek.plus(7, DateTimeUnit.DAY)
+        }
+        QFilterSort.AlarmWindow.ANY -> error("unreachable")
+    }
+    return start.atStartOfDayIn(tz) to endExclusive.atStartOfDayIn(tz)
+}
+
+private fun DayOfWeek.daysFromMonday(): Int = isoDayNumber - 1
