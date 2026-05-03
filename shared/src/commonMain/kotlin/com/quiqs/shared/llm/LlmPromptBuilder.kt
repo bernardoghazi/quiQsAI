@@ -230,13 +230,15 @@ class LlmPromptBuilder(
             - Do not translate the user's language in "text".
             - "text" is the note content only; strip wrappers like "remind me to", "cue me to",
               "me lembra de".
+            - Capitalize the first word.
 
             Examples:
               "Cue me at 5pm to pick up Stella"
-              → {"type":"create","text":"pick up Stella","tags":[],"alarms":[{"type":"oneOffTime","at":"<resolved>"}],"priority":"medium"}
+              → {"type":"create","text":"Pick up Stella","tags":[],"alarms":[{"type":"oneOffTime","at":"<resolved>"}],"priority":"medium"}
 
               "Urgent: call the doctor"
-              → {"type":"create","text":"call the doctor","tags":[],"alarms":[],"priority":"high"}
+              → {"type":"create","text":"Call the doctor","tags":[],"alarms":[],"priority":"high"}
+              → {"type":"create","text":"Call the doctor","tags":[],"alarms":[],"priority":"high"}
 
               "show only high priority"
               → {"type":"filterSort","spec":{"priorities":["high"]}}
