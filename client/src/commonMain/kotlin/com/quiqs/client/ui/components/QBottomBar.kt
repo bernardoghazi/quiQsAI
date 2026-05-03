@@ -15,15 +15,17 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.tooling.preview.Preview
+import org.jetbrains.compose.resources.painterResource
 import quiqsai.client.generated.resources.Res
 import quiqsai.client.generated.resources.filter
 import quiqsai.client.generated.resources.plus
-import org.jetbrains.compose.resources.painterResource
 
 /**
  * Bottom action bar shown on the list screen. Pill-shaped surface with three right-aligned
@@ -39,11 +41,10 @@ fun QBottomBar(
     modifier: Modifier = Modifier,
 ) {
     Surface(
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(28.dp),
+        modifier = modifier
+            .fillMaxWidth()
+            .alpha(0.8f),
         color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 3.dp,
-        shadowElevation = 2.dp,
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
@@ -101,3 +102,16 @@ private val MoreVertIcon: ImageVector = ImageVector.Builder(
         close()
     }
 }.build()
+
+@Preview
+@Composable
+private fun QBottomBarPreview() {
+    MaterialTheme {
+        QBottomBar(
+            onFilterSort = {},
+            onAdd = {},
+            onOverflow = {},
+//            modifier = Modifier.padding(12.dp),
+        )
+    }
+}
