@@ -62,14 +62,14 @@ fun QBottomBar(
     onSelectView: (ViewMode) -> Unit = {},
 ) {
     val isDark = LocalThemeIsDark.current
-    val groupContainer = if (isDark) Color(0xFF161616) else Color(0xFFDBDBDB)
+    val groupContainer = if (isDark) Color(0xFF111111) else Color(0xFFDBDBDB)
     val filledSquare = if (isDark) Color(0xFF000000) else Color(0xFF1A1A1A)
     val onFilledIconTint = Color(0xFFEFEFEF)
-    val unselectedIconTint = if (isDark) Color(0xFF7A7A7A) else Color(0xFF6E6E6E)
+    val unselectedIconTint = if (isDark) Color(0xFF2D2D2D) else Color(0xFF6E6E6E)
     val plainIconTint = if (isDark) Color(0xFFEDEDED) else Color(0xFF1A1A1A)
 
     Row(
-        modifier = modifier.fillMaxWidth().background(Color(0xFF090909)).padding(start = 16.dp, top = 4.dp, end = 0.dp, bottom = 24.dp),
+        modifier = modifier.fillMaxWidth().background(Color(0xFF090909)).padding(start = 16.dp, top = 10.dp, end = 0.dp, bottom = 24.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         ViewModeGroup(
