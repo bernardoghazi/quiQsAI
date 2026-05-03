@@ -92,17 +92,17 @@ fun QListScreen(
 
     Scaffold(
         containerColor = Color.Transparent,
-        topBar = {
-            TopAppBar(
-                title = { Text("quiQs") },
-                actions = {
-                    if (!filterSort.isDefault) {
-                        TextButton(onClick = onClearFilterSort) { Text("Clear filter") }
-                    }
-                    TextButton(onClick = onQueryQs) { Text("Query") }
-                },
-            )
-        },
+//        topBar = {
+//            TopAppBar(
+//                title = { Text("quiQs") },
+//                actions = {
+//                    if (!filterSort.isDefault) {
+//                        TextButton(onClick = onClearFilterSort) { Text("Clear filter") }
+//                    }
+//                    TextButton(onClick = onQueryQs) { Text("Query") }
+//                },
+//            )
+//        },
         floatingActionButton = {
             // Hand-rolled FAB: Material3's FloatingActionButton wraps a clickable Surface
             // whose internal detectTapAndPress consumes the pointer-down event, which
@@ -149,7 +149,7 @@ fun QListScreen(
                 onFilterSort = {},
                 onAdd = {},
                 onOverflow = {},
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+//                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
             )
         },
     ) { padding ->
