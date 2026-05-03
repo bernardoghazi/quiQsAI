@@ -97,12 +97,12 @@ val LocalThemeIsDark = staticCompositionLocalOf { false }
  * fill that every `Scaffold` (and tonally-elevated surface) inherits — change them
  * here, not at each call site.
  */
-private val QuiqsColorScheme = lightColorScheme(
+val QuiqsColorScheme = lightColorScheme(
     background = Color(0xFFF7F4EE),
     surface = Color(0xFFF7F4EE),
 )
 
-private val QuiqsDarkColorScheme = darkColorScheme(
+val QuiqsDarkColorScheme = darkColorScheme(
     background = Color(0xFF15140F),
     surface = Color(0xFF1C1B16),
 )

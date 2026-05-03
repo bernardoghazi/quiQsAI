@@ -28,6 +28,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.quiqs.client.LocalThemeIsDark
+import com.quiqs.client.QuiqsColorScheme
+import com.quiqs.client.QuiqsDarkColorScheme
 import com.quiqs.shared.Alarm
 import com.quiqs.shared.Priority
 import com.quiqs.shared.Q
@@ -123,14 +125,19 @@ private fun QCardPreview() {
         updatedAt = now,
     )
     MaterialTheme {
-        Box(modifier = Modifier.background(color = Color(0xFFD9D9D9))) {
-            QCard(
-                q = sample,
-                checked = sample.completed,
-                onCheckedChange = {},
-                onClick = {},
-                modifier = Modifier.padding(12.dp),
-            )
+        CompositionLocalProvider(LocalThemeIsDark provides true) {
+            val scheme = if (LocalThemeIsDark.current) QuiqsDarkColorScheme else QuiqsColorScheme
+            MaterialTheme(colorScheme = scheme) {
+                Box(modifier = Modifier.background(color = Color(0xFFD9D9D9))) {
+                    QCard(
+                        q = sample,
+                        checked = sample.completed,
+                        onCheckedChange = {},
+                        onClick = {},
+                        modifier = Modifier.padding(12.dp),
+                    )
+                }
+            }
         }
     }
 }
@@ -150,7 +157,8 @@ private fun QCardDarkPreview() {
         updatedAt = now,
     )
     CompositionLocalProvider(LocalThemeIsDark provides true) {
-        MaterialTheme(colorScheme = darkColorScheme()) {
+        val scheme = if (LocalThemeIsDark.current) QuiqsDarkColorScheme else QuiqsColorScheme
+        MaterialTheme(colorScheme = scheme) {
             Box(modifier = Modifier.background(color = Color(0xFF111111))) {
                 QCard(
                     q = sample,
