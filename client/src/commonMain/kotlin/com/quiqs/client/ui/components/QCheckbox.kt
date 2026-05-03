@@ -28,8 +28,8 @@ fun QCheckbox(
     onCheckedChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val borderColor = if (checked) MaterialTheme.colorScheme.primary
-        else MaterialTheme.colorScheme.outline
+    val borderColor = if (checked) Color(0xFF636363)
+        else Color(0xFF636363)
     val fillColor = if (checked) MaterialTheme.colorScheme.primary else Color.Transparent
     Box(
         modifier = modifier
