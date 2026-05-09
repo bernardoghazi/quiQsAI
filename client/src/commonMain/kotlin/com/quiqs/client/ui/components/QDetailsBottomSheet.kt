@@ -185,7 +185,7 @@ private fun QDetailsBottomSheetContent(q: Q) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = SHEET_SECTION_HORIZONTAL_PADDING.dp, vertical = 8.dp),
+                    .padding(horizontal = SHEET_SECTION_HORIZONTAL_PADDING.dp - 6.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
