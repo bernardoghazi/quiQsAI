@@ -82,7 +82,7 @@ fun QDetailsBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         containerColor = Color.Transparent,
-        scrimColor = Color.Black.copy(alpha = 0.6f),
+        scrimColor = Color.Black.copy(alpha = 0.8f),
         dragHandle = null,
         shape = RectangleShape,
         // Apply only the bottom navigation-bar inset so the sheet sits above the system
@@ -120,7 +120,9 @@ private fun QDetailsBottomSheetContent(q: Q) {
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Medium,
                 modifier = Modifier.padding(
-                    start = SHEET_SECTION_HORIZONTAL_PADDING.dp, top = 20.dp, end = SHEET_SECTION_HORIZONTAL_PADDING.dp,
+                    start = SHEET_SECTION_HORIZONTAL_PADDING.dp,
+                    top = 22.dp,
+                    end = SHEET_SECTION_HORIZONTAL_PADDING.dp,
                     bottom = 18.dp
                 ),
             )
