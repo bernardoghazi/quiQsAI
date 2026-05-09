@@ -208,7 +208,7 @@ private fun SheetSection(
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = shape,
-        color = Color(0xFF101010),
+        color = Color(0xFF0D0D0D),
     ) {
         content()
     }
