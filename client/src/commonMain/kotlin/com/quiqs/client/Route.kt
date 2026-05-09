@@ -14,6 +14,7 @@ sealed interface Route {
     /** The list of all Qs. Landing screen. */
     data object List : Route
 
+    //TODO: remove Route.Detail and QDetailScreen
     /**
      * The detail screen for a Q.
      * @property id `null` means "create a new Q" (the legacy manual-entry path).
