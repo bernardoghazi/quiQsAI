@@ -226,7 +226,7 @@ private fun QDetailsBottomSheetContent(q: Q) {
                     Text(
                         text = "Save",
                         color = Color(0xFFEDEDED),
-                        fontWeight = FontWeight.Medium,
+                        fontWeight = FontWeight.ExtraBold,
                     )
                 }
             }
