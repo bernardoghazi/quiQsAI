@@ -72,9 +72,9 @@ fun QCard(
         ) {
             Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
+                verticalAlignment = Alignment.Top,
             ) {
-                QCheckbox(checked = checked, onCheckedChange = onCheckedChange)
+                QCheckbox(checked = checked, onCheckedChange = onCheckedChange, modifier = Modifier.padding(top = 1.dp))
                 QText(
                     text = q.text,
                     role = QTextRole.Title,
@@ -148,7 +148,7 @@ private fun QCardDarkPreview() {
     val now = Instant.fromEpochMilliseconds(1_746_280_800_000)
     val sample = Q(
         id = Uuid.parse("00000000-0000-0000-0000-000000000001"),
-        text = "Pick up Stella from school",
+        text = "Pick up Stella from school and bla bla bla bla bla bla bla bla bla bla",
         tags = listOf("family", "personal"),
         alarms = listOf(Alarm.RecurringTime(rule = "FREQ=WEEKLY;BYDAY=MO,WE,FR", until = now)),
         priority = Priority.HIGH,
