@@ -8,6 +8,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextIndent
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.sp
 
@@ -27,12 +28,14 @@ fun QText(
     color: Color = LocalContentColor.current,
     maxLines: Int = Int.MAX_VALUE,
     overflow: TextOverflow = TextOverflow.Clip,
+    textIndent: TextIndent? = null,
 ) {
-    val style = when (role) {
-        QTextRole.Title -> TextStyle(fontSize = 14.sp, fontWeight = FontWeight.Medium)
+    val baseStyle = when (role) {
+        QTextRole.Title -> TextStyle(fontSize = 14.sp, fontWeight = FontWeight.Medium, lineHeight = 20.sp)
         QTextRole.Alarm -> TextStyle(fontSize = 12.sp, fontStyle = FontStyle.Italic)
         QTextRole.Badge -> TextStyle(fontSize = 12.sp, fontStyle = FontStyle.Italic)
     }
+    val style = if (textIndent != null) baseStyle.copy(textIndent = textIndent) else baseStyle
     Text(
         text = text,
         modifier = modifier,

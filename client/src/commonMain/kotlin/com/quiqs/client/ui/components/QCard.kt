@@ -10,21 +10,18 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.focusModifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.style.TextIndent
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.quiqs.client.LocalThemeIsDark
@@ -70,15 +67,24 @@ fun QCard(
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.Top,
-            ) {
-                QCheckbox(checked = checked, onCheckedChange = onCheckedChange, modifier = Modifier.padding(top = 1.dp))
+            // Indents the first line of the title so the checkbox can overlay that
+            // space and read as part of the text block; subsequent lines flow back to the
+            // left edge. Indent is converted from dp so it stays at 16.dp regardless of
+            // the user's font scale.
+            val titleIndent = with(LocalDensity.current) { TextIndent(firstLine = 22.dp.toSp()) }
+            Box(modifier = Modifier.fillMaxWidth()) {
                 QText(
                     text = q.text,
                     role = QTextRole.Title,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.fillMaxWidth(),
+                    textIndent = titleIndent,
+                )
+                QCheckbox(
+                    checked = checked,
+                    onCheckedChange = onCheckedChange,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(top = 1.dp),
                 )
             }
 
