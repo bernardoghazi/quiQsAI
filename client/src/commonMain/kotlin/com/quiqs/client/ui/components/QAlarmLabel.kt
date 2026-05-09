@@ -54,7 +54,7 @@ fun QAlarmLabel(
  * alarms we show the next firing time only — the repeat icon next to it conveys that the
  * alarm recurs. Falls back to the raw rule string if we can't compute a next instant.
  */
-private fun Alarm.formatLabel(): String = when (this) {
+fun Alarm.formatLabel(): String = when (this) {
     is Alarm.OneOffTime -> formatRelativeDateTime(at)
     is Alarm.RecurringTime -> {
         val tz = TimeZone.currentSystemDefault()

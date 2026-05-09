@@ -36,7 +36,9 @@ import com.quiqs.client.AgentProvider
 import com.quiqs.client.audio.RecorderProvider
 import com.quiqs.client.ui.components.QBottomBar
 import com.quiqs.client.ui.components.QCard
+import com.quiqs.client.ui.components.QDetailsBottomSheet
 import com.quiqs.client.ui.components.QVoicePromptDialog
+import com.quiqs.shared.Q
 import com.quiqs.shared.QFilterSort
 import com.quiqs.shared.QRepository
 import com.quiqs.shared.applyTo
@@ -45,12 +47,14 @@ import org.jetbrains.compose.resources.painterResource
 import quiqsai.client.generated.resources.Res
 import quiqsai.client.generated.resources.wave
 import kotlin.uuid.ExperimentalUuidApi
-import kotlin.uuid.Uuid
 
 /**
- * Landing screen — lists every stored Q and exposes the entry points for opening one
- * ([onOpenQ]), asking a question about them ([onQueryQs]), or invoking the combined
- * "new Q or filter" voice prompt by long-pressing the FAB.
+ * Landing screen — lists every stored Q and exposes the entry points for asking a
+ * question about them ([onQueryQs]), or invoking the combined "new Q or filter" voice
+ * prompt by long-pressing the FAB.
+ *
+ * Tapping a Q opens an in-place [QDetailsBottomSheet] inspector instead of pushing a
+ * dedicated detail screen.
  *
  * The list is rendered after applying [filterSort] as a pure projection. When the spec
  * is non-default an "Active filter" indicator surfaces in the top bar with a Clear
@@ -71,7 +75,6 @@ fun QListScreen(
     filterSort: QFilterSort,
     agentProvider: AgentProvider,
     recorderProvider: RecorderProvider,
-    onOpenQ: (Uuid) -> Unit,
     onQueryQs: () -> Unit,
     onFilterSortApplied: (QFilterSort) -> Unit,
     onClearFilterSort: () -> Unit,
@@ -89,6 +92,10 @@ fun QListScreen(
     // Tracks whether the current pointer-down crossed the long-press threshold, so the
     // shared `onPress` handler only ends the recording when a long press actually fired.
     var longPressActive by remember { mutableStateOf(false) }
+
+    // Drives the details bottom sheet — set when the user taps a Q card, cleared on
+    // dismiss (scrim tap or back press).
+    var selectedQ by remember { mutableStateOf<Q?>(null) }
 
     Scaffold(
         containerColor = Color.Transparent,
@@ -187,7 +194,7 @@ fun QListScreen(
                         onCheckedChange = { checked ->
                             scope.launch { repository.update(q.id, completed = checked) }
                         },
-                        onClick = { onOpenQ(q.id) },
+                        onClick = { selectedQ = q },
                     )
                 }
             }
@@ -195,4 +202,8 @@ fun QListScreen(
     }
 
     QVoicePromptDialog(state = voiceState, onDismiss = vm::dismissDialog)
+
+    selectedQ?.let { q ->
+        QDetailsBottomSheet(q = q, onDismiss = { selectedQ = null })
+    }
 }

@@ -55,7 +55,6 @@ fun App(
                     filterSort = filterSort,
                     agentProvider = agentProvider,
                     recorderProvider = recorderProvider,
-                    onOpenQ = { id -> route = Route.Detail(id = id) },
                     onQueryQs = { route = Route.Prompt(PromptMode.Query) },
                     onFilterSortApplied = { spec -> filterSort = spec },
                     onClearFilterSort = { filterSort = QFilterSort() },

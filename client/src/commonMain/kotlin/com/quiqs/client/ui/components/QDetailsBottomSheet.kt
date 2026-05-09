@@ -1,0 +1,242 @@
+package com.quiqs.client.ui.components
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Surface
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.quiqs.shared.Alarm
+import com.quiqs.shared.Priority
+import com.quiqs.shared.Q
+import org.jetbrains.compose.resources.painterResource
+import quiqsai.client.generated.resources.Res
+import quiqsai.client.generated.resources.plus
+
+/**
+ * Bottom sheet shown when a Q is tapped on the list. Replaces the navigation push to
+ * `QDetailScreen` with an in-place inspector that surfaces the Q's text, alarm/priority/
+ * tag pills, and a placeholder action bar.
+ *
+ * The sheet is visually composed of four independent rounded surfaces separated by 8 dp
+ * gaps, so its `containerColor` is transparent and the gaps fall through to the dimmed
+ * scrim. Clicking outside (scrim tap) or back-press dismisses via [onDismiss].
+ *
+ * Pill `×` glyphs and the action-bar icons are temporary placeholders rendered with
+ * `Res.drawable.plus`; both will be swapped for real assets once they land.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun QDetailsBottomSheet(
+    q: Q,
+    onDismiss: () -> Unit,
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = Color.Transparent,
+        scrimColor = Color.Black.copy(alpha = 0.6f),
+        dragHandle = null,
+        shape = RectangleShape,
+        contentWindowInsets = { WindowInsets(0, 0, 0, 0) },
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            // Section 1 — Q text. Top corners rounded more than the others to read as the
+            // sheet's header.
+            SheetSection(
+                shape = RoundedCornerShape(
+                    topStart = 28.dp,
+                    topEnd = 28.dp,
+                    bottomStart = 12.dp,
+                    bottomEnd = 12.dp,
+                ),
+            ) {
+                androidx.compose.material3.Text(
+                    text = q.text,
+                    color = Color(0xFFEDEDED),
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 18.dp),
+                )
+            }
+
+            // Section 2 — placeholder; real content (voice-note playback, etc.) lands later.
+            SheetSection(shape = RoundedCornerShape(12.dp)) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(96.dp)
+                        .padding(horizontal = 18.dp),
+                    contentAlignment = Alignment.CenterStart,
+                ) {
+                    androidx.compose.material3.Text(
+                        text = "Section 2 placeholder",
+                        color = Color(0xFF666666),
+                        fontSize = 14.sp,
+                    )
+                }
+            }
+
+            // Section 3 — alarm on row 1, priority + tags on row 2.
+            SheetSection(shape = RoundedCornerShape(12.dp)) {
+                Column(
+                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 18.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    q.alarms.firstOrNull()?.let { alarm ->
+                        AlarmPill(alarm = alarm, onDismiss = {})
+                    }
+                    val priorityTone = when (q.priority) {
+                        Priority.HIGH -> QBadgeTone.High
+                        Priority.LOW -> QBadgeTone.Low
+                        Priority.MEDIUM -> null
+                    }
+                    val hasPills = priorityTone != null || q.tags.isNotEmpty()
+                    if (hasPills) {
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            priorityTone?.let { tone ->
+                                DismissPill(label = q.priority.wire, tone = tone, onDismiss = {})
+                            }
+                            q.tags.forEach { tag ->
+                                DismissPill(label = tag, tone = QBadgeTone.Neutral, onDismiss = {})
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Section 4 — action bar. Bottom corners are square so the section abuts the
+            // bottom of the screen.
+            SheetSection(
+                shape = RoundedCornerShape(
+                    topStart = 12.dp,
+                    topEnd = 12.dp,
+                    bottomStart = 0.dp,
+                    bottomEnd = 0.dp,
+                ),
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp, vertical = 14.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    repeat(3) {
+                        IconButton(onClick = {}) {
+                            Icon(
+                                painter = painterResource(Res.drawable.plus),
+                                contentDescription = null,
+                                tint = Color(0xFFEDEDED),
+                                modifier = Modifier.size(22.dp),
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SheetSection(
+    shape: Shape,
+    content: @Composable () -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = shape,
+        color = Color(0xFF000000),
+    ) {
+        content()
+    }
+}
+
+@Composable
+private fun AlarmPill(
+    alarm: Alarm,
+    onDismiss: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .background(Color(0xFF161616))
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        QAlarmLabel(alarm = alarm)
+        DismissIcon(tint = Color(0xFFB8B8B8), onClick = onDismiss)
+    }
+}
+
+@Composable
+private fun DismissPill(
+    label: String,
+    tone: QBadgeTone,
+    onDismiss: () -> Unit,
+) {
+    val (bg, fg) = pillColors(tone)
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .background(bg)
+            .padding(horizontal = 12.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        QText(text = label, role = QTextRole.Badge, color = fg)
+        DismissIcon(tint = fg, onClick = onDismiss)
+    }
+}
+
+@Composable
+private fun DismissIcon(tint: Color, onClick: () -> Unit) {
+    Icon(
+        painter = painterResource(Res.drawable.plus),
+        contentDescription = "Remove",
+        tint = tint,
+        modifier = Modifier
+            .size(10.dp)
+            .clickable { onClick() },
+    )
+}
+
+private data class PillColors(val bg: Color, val fg: Color)
+
+private fun pillColors(tone: QBadgeTone): PillColors = when (tone) {
+    QBadgeTone.Neutral -> PillColors(bg = Color(0xFF161616), fg = Color(0xFF666666))
+    QBadgeTone.High -> PillColors(bg = Color(0xFF200C0C), fg = Color(0xFFA34949))
+    QBadgeTone.Low -> PillColors(bg = Color(0xFFF1F4F8), fg = Color(0xFF8893A1))
+}
