@@ -69,7 +69,7 @@ fun QBottomBar(
     val plainIconTint = if (isDark) Color(0xFFEDEDED) else Color(0xFF1A1A1A)
 
     Row(
-        modifier = modifier.fillMaxWidth().background(Color(0xFF090909)).padding(start = 16.dp, top = 10.dp, end = 0.dp, bottom = 24.dp),
+        modifier = modifier.fillMaxWidth().background(Color(0xED0A0A0A)).padding(start = 16.dp, top = 10.dp, end = 0.dp, bottom = 24.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         ViewModeGroup(

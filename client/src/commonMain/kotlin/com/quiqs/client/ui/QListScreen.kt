@@ -165,12 +165,18 @@ fun QListScreen(
             }
         } else {
             LazyColumn(
-                modifier = Modifier.fillMaxSize().padding(padding),
+                // Only consume the top inset so the list can extend behind the bottom
+                // bar; the bar's height is folded into contentPadding instead, which
+                // lets a translucent bar reveal scrolling Qs underneath while still
+                // allowing the last card to scroll above the bar.
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(top = padding.calculateTopPadding()),
                 contentPadding = PaddingValues(
                     start = 12.dp,
                     end = 12.dp,
                     top = 12.dp,
-                    bottom = 84.dp,
+                    bottom = padding.calculateBottomPadding() + 84.dp,
                 ),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
