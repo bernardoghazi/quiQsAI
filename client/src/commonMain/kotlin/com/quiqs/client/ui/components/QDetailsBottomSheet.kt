@@ -5,28 +5,27 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
-import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
@@ -45,12 +44,15 @@ import com.quiqs.client.QuiqsDarkColorScheme
 import com.quiqs.shared.Alarm
 import com.quiqs.shared.Priority
 import com.quiqs.shared.Q
-import kotlin.time.Instant
-import kotlin.uuid.Uuid
 import org.jetbrains.compose.resources.painterResource
 import quiqsai.client.generated.resources.Res
+import quiqsai.client.generated.resources.clock
+import quiqsai.client.generated.resources.exclamation
+import quiqsai.client.generated.resources.label
 import quiqsai.client.generated.resources.plus
 import quiqsai.client.generated.resources.x
+import kotlin.time.Instant
+import kotlin.uuid.Uuid
 
 
 const val SHEET_SECTION_HORIZONTAL_PADDING = 22
@@ -187,15 +189,37 @@ private fun QDetailsBottomSheetContent(q: Q) {
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                repeat(4) {
-                    IconButton(onClick = {}) {
-                        Icon(
-                            painter = painterResource(Res.drawable.plus),
-                            contentDescription = null,
-                            tint = Color(0xFFEDEDED),
-                            modifier = Modifier.size(22.dp),
-                        )
-                    }
+                IconButton(onClick = {}) {
+                    Icon(
+                        painter = painterResource(Res.drawable.plus),
+                        contentDescription = null,
+                        tint = Color(0xFFEDEDED),
+                        modifier = Modifier.size(22.dp),
+                    )
+                }
+                IconButton(onClick = {}) {
+                    Icon(
+                        painter = painterResource(Res.drawable.clock),
+                        contentDescription = null,
+                        tint = Color(0xFFEDEDED),
+                        modifier = Modifier.size(22.dp),
+                    )
+                }
+                IconButton(onClick = {}) {
+                    Icon(
+                        painter = painterResource(Res.drawable.exclamation),
+                        contentDescription = null,
+                        tint = Color(0xFFEDEDED),
+                        modifier = Modifier.size(19.dp),
+                    )
+                }
+                IconButton(onClick = {}) {
+                    Icon(
+                        painter = painterResource(Res.drawable.label),
+                        contentDescription = null,
+                        tint = Color(0xFFEDEDED),
+                        modifier = Modifier.size(24.dp),
+                    )
                 }
                 Spacer(modifier = Modifier.weight(1f))
                 TextButton(onClick = {}) {
