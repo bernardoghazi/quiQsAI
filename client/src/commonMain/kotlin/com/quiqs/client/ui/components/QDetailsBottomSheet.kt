@@ -47,6 +47,7 @@ import kotlin.uuid.Uuid
 import org.jetbrains.compose.resources.painterResource
 import quiqsai.client.generated.resources.Res
 import quiqsai.client.generated.resources.plus
+import quiqsai.client.generated.resources.x
 
 
 const val SHEET_SECTION_HORIZONTAL_PADDING = 22
@@ -251,18 +252,18 @@ private fun DismissPill(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         QText(text = label, role = QTextRole.Badge, color = fg)
-        DismissIcon(tint = fg, onClick = onDismiss)
+        DismissIcon(onClick = onDismiss)
     }
 }
 
 @Composable
-private fun DismissIcon(tint: Color, onClick: () -> Unit) {
+private fun DismissIcon(tint: Color = Color.White, onClick: () -> Unit) {
     Icon(
-        painter = painterResource(Res.drawable.plus),
+        painter = painterResource(Res.drawable.x),
         contentDescription = "Remove",
         tint = tint,
         modifier = Modifier
-            .size(10.dp)
+            .size(8.dp)
             .clickable { onClick() },
     )
 }
