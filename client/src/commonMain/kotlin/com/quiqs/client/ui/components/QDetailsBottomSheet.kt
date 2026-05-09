@@ -261,7 +261,7 @@ private fun AlarmPill(
             .background(Color(0xFF161616))
             .padding(horizontal = 12.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         QAlarmLabel(alarm = alarm, color = Color.White)
         DismissIcon(tint = Color(0xFFB8B8B8), onClick = onDismiss)
