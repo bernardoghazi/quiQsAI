@@ -81,13 +81,14 @@ fun QBottomBar(
             unselectedTint = unselectedIconTint,
         )
 
-        Spacer(modifier = Modifier.weight(1f))
+        Spacer(modifier = Modifier.weight(1.8f))
 
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically
+        ) {
             FilledSquareButton(
                 drawable = Res.drawable.filter,
                 contentDescription = "Filter and sort",
-                background = filledSquare,
                 tint = onFilledIconTint,
                 onClick = onFilterSort,
                 iconSize = 24.dp,
@@ -96,18 +97,20 @@ fun QBottomBar(
             FilledSquareButton(
                 drawable = Res.drawable.plus,
                 contentDescription = "Add Q",
-                background = filledSquare,
                 tint = onFilledIconTint,
                 onClick = onAdd,
             )
-            IconButton(onClick = onOverflow) {
-                Icon(
-                    painter = painterResource(Res.drawable.three_dots),
-                    contentDescription = "More",
-                    tint = plainIconTint,
-                    modifier = Modifier.size(20.dp),
-                )
-            }
+        }
+
+        Spacer(modifier = Modifier.weight(1f))
+
+        IconButton(onClick = onOverflow) {
+            Icon(
+                painter = painterResource(Res.drawable.three_dots),
+                contentDescription = "More",
+                tint = plainIconTint,
+                modifier = Modifier.size(20.dp),
+            )
         }
     }
 }
@@ -171,7 +174,7 @@ private fun ViewModeToggle(
 private fun FilledSquareButton(
     drawable: DrawableResource,
     contentDescription: String,
-    background: Color,
+    background: Color = Color.Transparent,
     tint: Color,
     onClick: () -> Unit,
     iconSize: Dp = 20.dp,
