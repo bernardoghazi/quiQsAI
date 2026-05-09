@@ -10,6 +10,9 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -78,7 +81,10 @@ fun QDetailsBottomSheet(
         scrimColor = Color.Black.copy(alpha = 0.6f),
         dragHandle = null,
         shape = RectangleShape,
-        contentWindowInsets = { WindowInsets(0, 0, 0, 0) },
+        // Apply only the bottom navigation-bar inset so the sheet sits above the system
+        // nav bar — same behavior `Scaffold` gives a `bottomBar`. Top/horizontal insets
+        // stay zero because the sheet anchors to the bottom and spans full width.
+        contentWindowInsets = { WindowInsets.navigationBars.only(WindowInsetsSides.Bottom) },
     ) {
         QDetailsBottomSheetContent(q = q)
     }
@@ -170,8 +176,8 @@ private fun QDetailsBottomSheetContent(q: Q) {
             shape = RoundedCornerShape(
                 topStart = 4.dp,
                 topEnd = 4.dp,
-                bottomStart = 0.dp,
-                bottomEnd = 0.dp,
+                bottomStart = 4.dp,
+                bottomEnd = 4.dp,
             ),
         ) {
             Row(
