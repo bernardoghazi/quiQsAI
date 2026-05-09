@@ -108,7 +108,10 @@ private fun QDetailsBottomSheetContent(q: Q) {
                 color = Color(0xFFEDEDED),
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Medium,
-                modifier = Modifier.padding(horizontal = SHEET_SECTION_HORIZONTAL_PADDING.dp, vertical = 18.dp),
+                modifier = Modifier.padding(
+                    start = SHEET_SECTION_HORIZONTAL_PADDING.dp, top = 20.dp, end = SHEET_SECTION_HORIZONTAL_PADDING.dp,
+                    bottom = 18.dp
+                ),
             )
         }
 
