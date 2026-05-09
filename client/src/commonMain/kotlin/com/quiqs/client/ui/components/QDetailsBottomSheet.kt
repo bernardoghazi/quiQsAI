@@ -198,7 +198,7 @@ private fun QDetailsBottomSheetContent(q: Q) {
                         painter = painterResource(Res.drawable.plus),
                         contentDescription = null,
                         tint = Color(0xFFEDEDED),
-                        modifier = Modifier.size(22.dp),
+                        modifier = Modifier.size(20.dp),
                     )
                 }
                 IconButton(onClick = {}) {
@@ -206,7 +206,7 @@ private fun QDetailsBottomSheetContent(q: Q) {
                         painter = painterResource(Res.drawable.clock),
                         contentDescription = null,
                         tint = Color(0xFFEDEDED),
-                        modifier = Modifier.size(22.dp),
+                        modifier = Modifier.size(20.dp),
                     )
                 }
                 IconButton(onClick = {}) {
@@ -214,7 +214,7 @@ private fun QDetailsBottomSheetContent(q: Q) {
                         painter = painterResource(Res.drawable.exclamation),
                         contentDescription = null,
                         tint = Color(0xFFEDEDED),
-                        modifier = Modifier.size(19.dp),
+                        modifier = Modifier.size(17.dp),
                     )
                 }
                 IconButton(onClick = {}) {
@@ -222,7 +222,7 @@ private fun QDetailsBottomSheetContent(q: Q) {
                         painter = painterResource(Res.drawable.label),
                         contentDescription = null,
                         tint = Color(0xFFEDEDED),
-                        modifier = Modifier.size(24.dp),
+                        modifier = Modifier.size(22.dp),
                     )
                 }
                 Spacer(modifier = Modifier.weight(1f))
