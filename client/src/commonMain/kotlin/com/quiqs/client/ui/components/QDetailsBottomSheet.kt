@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -19,8 +20,12 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -28,14 +33,23 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.quiqs.client.LocalThemeIsDark
+import com.quiqs.client.QuiqsColorScheme
+import com.quiqs.client.QuiqsDarkColorScheme
 import com.quiqs.shared.Alarm
 import com.quiqs.shared.Priority
 import com.quiqs.shared.Q
+import kotlin.time.Instant
+import kotlin.uuid.Uuid
 import org.jetbrains.compose.resources.painterResource
 import quiqsai.client.generated.resources.Res
 import quiqsai.client.generated.resources.plus
+
+
+const val SHEET_SECTION_HORIZONTAL_PADDING = 22
 
 /**
  * Bottom sheet shown when a Q is tapped on the list. Replaces the navigation push to
@@ -65,104 +79,121 @@ fun QDetailsBottomSheet(
         shape = RectangleShape,
         contentWindowInsets = { WindowInsets(0, 0, 0, 0) },
     ) {
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+        QDetailsBottomSheetContent(q = q)
+    }
+}
+
+/**
+ * The sheet's body, factored out so it can be rendered in `@Preview` (the surrounding
+ * [ModalBottomSheet] requires a real Window and won't render in tooling).
+ */
+@Composable
+private fun QDetailsBottomSheetContent(q: Q) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        // Section 1 — Q text. Top corners rounded more than the others to read as the
+        // sheet's header.
+        SheetSection(
+            shape = RoundedCornerShape(
+                topStart = 14.dp,
+                topEnd = 14.dp,
+                bottomStart = 4.dp,
+                bottomEnd = 4.dp,
+            ),
         ) {
-            // Section 1 — Q text. Top corners rounded more than the others to read as the
-            // sheet's header.
-            SheetSection(
-                shape = RoundedCornerShape(
-                    topStart = 28.dp,
-                    topEnd = 28.dp,
-                    bottomStart = 12.dp,
-                    bottomEnd = 12.dp,
-                ),
+            Text(
+                text = q.text,
+                color = Color(0xFFEDEDED),
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.padding(horizontal = SHEET_SECTION_HORIZONTAL_PADDING.dp, vertical = 18.dp),
+            )
+        }
+
+        // Section 2 — placeholder; real content (voice-note playback, etc.) lands later.
+        SheetSection(shape = RoundedCornerShape(4.dp)) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(96.dp)
+                    .padding(horizontal = SHEET_SECTION_HORIZONTAL_PADDING.dp),
+                contentAlignment = Alignment.CenterStart,
             ) {
-                androidx.compose.material3.Text(
-                    text = q.text,
-                    color = Color(0xFFEDEDED),
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Medium,
-                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 18.dp),
+                Text(
+                    text = "Section 2 placeholder",
+                    color = Color(0xFF666666),
+                    fontSize = 14.sp,
                 )
             }
+        }
 
-            // Section 2 — placeholder; real content (voice-note playback, etc.) lands later.
-            SheetSection(shape = RoundedCornerShape(12.dp)) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(96.dp)
-                        .padding(horizontal = 18.dp),
-                    contentAlignment = Alignment.CenterStart,
-                ) {
-                    androidx.compose.material3.Text(
-                        text = "Section 2 placeholder",
-                        color = Color(0xFF666666),
-                        fontSize = 14.sp,
-                    )
-                }
-            }
-
-            // Section 3 — alarm on row 1, priority + tags on row 2.
-            SheetSection(shape = RoundedCornerShape(12.dp)) {
-                Column(
-                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 18.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    q.alarms.firstOrNull()?.let { alarm ->
-                        AlarmPill(alarm = alarm, onDismiss = {})
-                    }
-                    val priorityTone = when (q.priority) {
-                        Priority.HIGH -> QBadgeTone.High
-                        Priority.LOW -> QBadgeTone.Low
-                        Priority.MEDIUM -> null
-                    }
-                    val hasPills = priorityTone != null || q.tags.isNotEmpty()
-                    if (hasPills) {
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            priorityTone?.let { tone ->
-                                DismissPill(label = q.priority.wire, tone = tone, onDismiss = {})
-                            }
-                            q.tags.forEach { tag ->
-                                DismissPill(label = tag, tone = QBadgeTone.Neutral, onDismiss = {})
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Section 4 — action bar. Bottom corners are square so the section abuts the
-            // bottom of the screen.
-            SheetSection(
-                shape = RoundedCornerShape(
-                    topStart = 12.dp,
-                    topEnd = 12.dp,
-                    bottomStart = 0.dp,
-                    bottomEnd = 0.dp,
-                ),
+        // Section 3 — alarm on row 1, priority + tags on row 2.
+        SheetSection(shape = RoundedCornerShape(4.dp)) {
+            Column(
+                modifier = Modifier.padding(horizontal = SHEET_SECTION_HORIZONTAL_PADDING.dp, vertical = 18.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 24.dp, vertical = 14.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    repeat(3) {
-                        IconButton(onClick = {}) {
-                            Icon(
-                                painter = painterResource(Res.drawable.plus),
-                                contentDescription = null,
-                                tint = Color(0xFFEDEDED),
-                                modifier = Modifier.size(22.dp),
-                            )
+                q.alarms.firstOrNull()?.let { alarm ->
+                    AlarmPill(alarm = alarm, onDismiss = {})
+                }
+                val priorityTone = when (q.priority) {
+                    Priority.HIGH -> QBadgeTone.High
+                    Priority.LOW -> QBadgeTone.Low
+                    Priority.MEDIUM -> null
+                }
+                val hasPills = priorityTone != null || q.tags.isNotEmpty()
+                if (hasPills) {
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        priorityTone?.let { tone ->
+                            DismissPill(label = q.priority.wire, tone = tone, onDismiss = {})
+                        }
+                        q.tags.forEach { tag ->
+                            DismissPill(label = tag, tone = QBadgeTone.Neutral, onDismiss = {})
                         }
                     }
+                }
+            }
+        }
+
+        // Section 4 — action bar. Bottom corners are square so the section abuts the
+        // bottom of the screen.
+        SheetSection(
+            shape = RoundedCornerShape(
+                topStart = 4.dp,
+                topEnd = 4.dp,
+                bottomStart = 0.dp,
+                bottomEnd = 0.dp,
+            ),
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = SHEET_SECTION_HORIZONTAL_PADDING.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                repeat(4) {
+                    IconButton(onClick = {}) {
+                        Icon(
+                            painter = painterResource(Res.drawable.plus),
+                            contentDescription = null,
+                            tint = Color(0xFFEDEDED),
+                            modifier = Modifier.size(22.dp),
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.weight(1f))
+                TextButton(onClick = {}) {
+                    Text(
+                        text = "Save",
+                        color = Color(0xFFEDEDED),
+                        fontWeight = FontWeight.Medium,
+                    )
                 }
             }
         }
@@ -177,7 +208,7 @@ private fun SheetSection(
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = shape,
-        color = Color(0xFF000000),
+        color = Color(0xFF101010),
     ) {
         content()
     }
@@ -239,4 +270,44 @@ private fun pillColors(tone: QBadgeTone): PillColors = when (tone) {
     QBadgeTone.Neutral -> PillColors(bg = Color(0xFF161616), fg = Color(0xFF666666))
     QBadgeTone.High -> PillColors(bg = Color(0xFF200C0C), fg = Color(0xFFA34949))
     QBadgeTone.Low -> PillColors(bg = Color(0xFFF1F4F8), fg = Color(0xFF8893A1))
+}
+
+private fun previewSampleQ(): Q {
+    val now = Instant.fromEpochMilliseconds(1_746_280_800_000)
+    return Q(
+        id = Uuid.parse("00000000-0000-0000-0000-000000000001"),
+        text = "Get groceries for the party.",
+        tags = listOf("work", "personal"),
+        alarms = listOf(Alarm.OneOffTime(at = now)),
+        priority = Priority.HIGH,
+        completed = false,
+        createdAt = now,
+        updatedAt = now,
+    )
+}
+
+@Preview
+@Composable
+private fun QDetailsBottomSheetPreview() {
+    CompositionLocalProvider(LocalThemeIsDark provides false) {
+        val scheme = if (LocalThemeIsDark.current) QuiqsDarkColorScheme else QuiqsColorScheme
+        MaterialTheme(colorScheme = scheme) {
+            Box(modifier = Modifier.background(color = Color(0xFFF7F4EE))) {
+                QDetailsBottomSheetContent(q = previewSampleQ())
+            }
+        }
+    }
+}
+
+@Preview
+@Composable
+private fun QDetailsBottomSheetPreviewDark() {
+    CompositionLocalProvider(LocalThemeIsDark provides true) {
+        val scheme = if (LocalThemeIsDark.current) QuiqsDarkColorScheme else QuiqsColorScheme
+        MaterialTheme(colorScheme = scheme) {
+            Box(modifier = Modifier.background(color = Color(0xFF0A0A0A))) {
+                QDetailsBottomSheetContent(q = previewSampleQ())
+            }
+        }
+    }
 }
