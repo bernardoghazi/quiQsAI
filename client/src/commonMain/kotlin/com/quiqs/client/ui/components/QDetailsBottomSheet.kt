@@ -231,7 +231,7 @@ private fun AlarmPill(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        QAlarmLabel(alarm = alarm)
+        QAlarmLabel(alarm = alarm, color = Color.White)
         DismissIcon(tint = Color(0xFFB8B8B8), onClick = onDismiss)
     }
 }
