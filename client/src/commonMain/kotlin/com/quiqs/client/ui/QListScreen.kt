@@ -136,7 +136,7 @@ fun QListScreen(
                     Icon(
                         painter = painterResource(Res.drawable.wave),
                         contentDescription = "Hold to record voice prompt to add Qs or edit filter and sort.",
-                        tint = Color(0xFF000000),
+                        tint = Color(0xFFFFFFFF),
                         modifier = Modifier.size(24.dp)
                     )
                 }
