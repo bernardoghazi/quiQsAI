@@ -208,6 +208,7 @@ fun QListScreen(
                     QCard(
                         q = q,
                         checked = q.completed,
+                        playerProvider = playerProvider,
                         onCheckedChange = { checked ->
                             scope.launch { repository.update(q.id, completed = checked) }
                         },
