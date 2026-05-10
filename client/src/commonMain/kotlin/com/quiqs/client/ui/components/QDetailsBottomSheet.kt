@@ -1,6 +1,7 @@
 package com.quiqs.client.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -11,7 +12,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.only
@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -50,6 +51,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.quiqs.client.LocalThemeIsDark
@@ -165,6 +167,15 @@ private fun QDetailsBottomSheetContent(
     // is fine — no need to key on `initial`.
     var draftText by remember { mutableStateOf(initial.text) }
     var draftVoiceNotePath by remember { mutableStateOf(initial.voiceNotePath) }
+    var draftPriority by remember { mutableStateOf(initial.priority) }
+    // Single picker anchored to the section-4 exclamation icon. The section-3
+    // priority pill opens the same menu (so the popup appears above the icon),
+    // which keeps the entry points consistent and avoids a second anchor.
+    var priorityMenuOpen by remember { mutableStateOf(false) }
+    val onSelectPriority: (Priority) -> Unit = { picked ->
+        draftPriority = picked
+        priorityMenuOpen = false
+    }
 
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -214,18 +225,18 @@ private fun QDetailsBottomSheetContent(
             }
         }
 
-        // Section 3 — alarm on row 1, priority + tags on row 2. Read-only for now;
-        // the dismiss `×` handlers and add-pill entry points will mutate the draft
-        // when wired. Hidden entirely when the draft has nothing to show — Priority
-        // MEDIUM is the "no badge" baseline (matches `QCard`), so it doesn't qualify.
-        val priorityTone = when (initial.priority) {
+        // Section 3 — alarm on row 1, priority + tags on row 2. Priority is mutable
+        // via the section-4 exclamation popup; alarms / tags are still read-only.
+        // Hidden entirely when the draft has nothing to show — Priority MEDIUM is the
+        // "no badge" baseline (matches `QCard`), so it doesn't qualify.
+        val priorityTone = when (draftPriority) {
             Priority.HIGH -> QBadgeTone.High
             Priority.LOW -> QBadgeTone.Low
             Priority.MEDIUM -> null
         }
         val showSection3 = initial.alarms.isNotEmpty() ||
-            priorityTone != null ||
-            initial.tags.isNotEmpty()
+                priorityTone != null ||
+                initial.tags.isNotEmpty()
         if (showSection3) {
             SheetSection(shape = RoundedCornerShape(4.dp)) {
                 Column(
@@ -242,7 +253,12 @@ private fun QDetailsBottomSheetContent(
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             priorityTone?.let { tone ->
-                                DismissPill(label = initial.priority.wire, tone = tone, onDismiss = {})
+                                DismissPill(
+                                    label = draftPriority.wire,
+                                    tone = tone,
+                                    onClick = { priorityMenuOpen = true },
+                                    onDismiss = { draftPriority = Priority.MEDIUM },
+                                )
                             }
                             initial.tags.forEach { tag ->
                                 DismissPill(label = tag, tone = QBadgeTone.Neutral, onDismiss = {})
@@ -286,13 +302,30 @@ private fun QDetailsBottomSheetContent(
                         modifier = Modifier.size(20.dp),
                     )
                 }
-                IconButton(onClick = {}) {
-                    Icon(
-                        painter = painterResource(Res.drawable.exclamation),
-                        contentDescription = null,
-                        tint = Color(0xFFEDEDED),
-                        modifier = Modifier.size(17.dp),
-                    )
+                Box {
+                    IconButton(onClick = { priorityMenuOpen = true }) {
+                        Icon(
+                            painter = painterResource(Res.drawable.exclamation),
+                            contentDescription = "Set priority",
+                            tint = Color(0xFFEDEDED),
+                            modifier = Modifier.size(17.dp),
+                        )
+                    }
+                    // Anchored to the icon button. The menu auto-flips above when there's
+                    // no room below — which is the typical case here, since section 4 sits
+                    // at the bottom of the sheet.
+                    DropdownMenu(
+                        expanded = priorityMenuOpen,
+                        onDismissRequest = { priorityMenuOpen = false },
+                        offset = DpOffset(0.dp, (-8).dp),
+                        shape = RoundedCornerShape(12.dp),
+                        containerColor = Color(0xFF000000),
+                    ) {
+                        PriorityMenuContent(
+                            selected = draftPriority,
+                            onSelect = onSelectPriority,
+                        )
+                    }
                 }
                 IconButton(onClick = {}) {
                     Icon(
@@ -310,6 +343,7 @@ private fun QDetailsBottomSheetContent(
                             initial.copy(
                                 text = draftText.trim(),
                                 voiceNotePath = draftVoiceNotePath,
+                                priority = draftPriority,
                             )
                         )
                     },
@@ -607,6 +641,7 @@ private fun AlarmPill(
 private fun DismissPill(
     label: String,
     tone: QBadgeTone,
+    onClick: (() -> Unit)? = null,
     onDismiss: () -> Unit,
 ) {
     val (bg, fg) = pillColors(tone)
@@ -614,6 +649,7 @@ private fun DismissPill(
         modifier = Modifier
             .clip(RoundedCornerShape(20))
             .background(bg)
+            .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier)
             .padding(horizontal = 12.dp, vertical = 4.dp)
             .widthIn(min = 45.dp, max = 80.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -621,7 +657,73 @@ private fun DismissPill(
     ) {
         QText(text = label, role = QTextRole.Badge, color = fg)
         Spacer(modifier = Modifier.width(10.dp))
+        // Inner clickable on the icon takes priority over the row's clickable, so
+        // taps on the × clear the pill instead of opening the picker.
         DismissIcon(onClick = onDismiss)
+    }
+}
+
+/**
+ * The three-chip selector shared by both priority dropdowns — the section-4
+ * exclamation icon and the section-3 priority pill. Factored so the two
+ * [DropdownMenu] anchors stay visually identical.
+ */
+@Composable
+private fun PriorityMenuContent(
+    selected: Priority,
+    onSelect: (Priority) -> Unit,
+) {
+    Row(
+        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        PriorityChip(
+            label = Priority.LOW.wire,
+            tone = QBadgeTone.Low,
+            selected = selected == Priority.LOW,
+            onClick = { onSelect(Priority.LOW) },
+        )
+        PriorityChip(
+            label = Priority.MEDIUM.wire,
+            tone = QBadgeTone.Neutral,
+            selected = selected == Priority.MEDIUM,
+            onClick = { onSelect(Priority.MEDIUM) },
+        )
+        PriorityChip(
+            label = Priority.HIGH.wire,
+            tone = QBadgeTone.High,
+            selected = selected == Priority.HIGH,
+            onClick = { onSelect(Priority.HIGH) },
+        )
+    }
+}
+
+/**
+ * Tappable selector chip used inside the priority popup. Same palette as the
+ * section-3 [DismissPill] (so the chip previews what its selection will look like)
+ * but without the trailing `×` and with a 1 dp border on the currently-selected one.
+ */
+@Composable
+private fun PriorityChip(
+    label: String,
+    tone: QBadgeTone,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val (bg, fg) = pillColors(tone)
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(20))
+            .background(bg)
+            .then(
+                if (selected) Modifier.border(1.dp, fg, RoundedCornerShape(20))
+                else Modifier
+            )
+            .clickable { onClick() }
+            .padding(horizontal = 14.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        QText(text = label, role = QTextRole.Badge, color = fg)
     }
 }
 
