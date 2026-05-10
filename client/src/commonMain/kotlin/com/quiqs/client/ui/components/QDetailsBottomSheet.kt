@@ -59,6 +59,7 @@ import com.quiqs.client.audio.RecorderStatus
 import com.quiqs.shared.Alarm
 import com.quiqs.shared.Priority
 import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.DrawableResource
 import org.jetbrains.compose.resources.painterResource
 import quiqsai.client.generated.resources.Res
 import quiqsai.client.generated.resources.clock
@@ -173,14 +174,31 @@ private fun QDetailsBottomSheetContent(
         }
 
         // Section 2 — voice note. Recording lands on the local draft; persistence
-        // happens on Save, so dismissing without saving discards the take.
+        // happens on Save, so dismissing without saving discards the take. The clear
+        // affordance lives at the section corner (overlaying the recorded-state
+        // button), not inside the inner content, so it lines up with the screenshot's
+        // top-right `×`.
         SheetSection(shape = RoundedCornerShape(4.dp)) {
-            VoiceNoteSection(
-                voiceNotePath = draftVoiceNotePath,
-                recorderProvider = recorderProvider,
-                onSetVoiceNote = { draftVoiceNotePath = it },
-                onClearVoiceNote = { draftVoiceNotePath = null },
-            )
+            Box(modifier = Modifier.fillMaxWidth()) {
+                VoiceNoteButton(
+                    voiceNotePath = draftVoiceNotePath,
+                    recorderProvider = recorderProvider,
+                    onSetVoiceNote = { draftVoiceNotePath = it },
+                )
+                if (draftVoiceNotePath != null) {
+                    IconButton(
+                        onClick = { draftVoiceNotePath = null },
+                        modifier = Modifier.align(Alignment.TopEnd),
+                    ) {
+                        Icon(
+                            painter = painterResource(Res.drawable.x),
+                            contentDescription = "Remove voice note",
+                            tint = Color(0xFFEDEDED),
+                            modifier = Modifier.size(14.dp),
+                        )
+                    }
+                }
+            }
         }
 
         // Section 3 — alarm on row 1, priority + tags on row 2. Read-only for now;
@@ -345,24 +363,23 @@ private fun SheetSection(
 }
 
 /**
- * Two-state voice-note panel.
+ * Two-state voice-note button rendered inside section 2.
  *
- * No audio attached: a wide orange button. Long-pressing the button asks
- * [recorderProvider] for an [AudioRecorder] (which prompts for the mic permission on
- * first use), starts capture, and on release stops the recorder and forwards the
- * resulting absolute path through [onSetVoiceNote].
+ * No audio attached: a wide orange button. Long-pressing it asks [recorderProvider]
+ * for an [AudioRecorder] (which prompts for the mic permission on first use), starts
+ * capture, and on release stops the recorder and forwards the resulting absolute path
+ * through [onSetVoiceNote].
  *
- * Audio attached: a speaker glyph plus a white "tap to play voice note" pill, with an
- * `×` in the top-right that calls [onClearVoiceNote] to detach the recording.
+ * Audio attached: a white "tap to play voice note" pill alongside a speaker glyph. The
+ * clear `×` is overlaid at the section corner by the caller, not by this composable.
  *
  * Playback isn't wired yet — the play pill currently does nothing on tap.
  */
 @Composable
-private fun VoiceNoteSection(
+private fun VoiceNoteButton(
     voiceNotePath: String?,
     recorderProvider: RecorderProvider,
     onSetVoiceNote: (String) -> Unit,
-    onClearVoiceNote: () -> Unit,
 ) {
     if (voiceNotePath == null) {
         HoldToRecordButton(
@@ -372,7 +389,6 @@ private fun VoiceNoteSection(
     } else {
         VoiceNotePlayBlock(
             onTapPlay = { /* Playback wiring lands later. */ },
-            onClear = onClearVoiceNote,
         )
     }
 }
@@ -389,6 +405,80 @@ private fun HoldToRecordButton(
     var longPressActive by remember { mutableStateOf(false) }
     var activeRecorder by remember { mutableStateOf<AudioRecorder?>(null) }
 
+    VoiceNoteActionButton(
+        icon = Res.drawable.mic,
+        iconTint = Color.White,
+        label = "hold to add voice note",
+        labelColor = Color.White,
+        containerColor = Color(0xFFD85A00),
+        gestureModifier = Modifier.pointerInput(Unit) {
+            detectTapGestures(
+                onPress = {
+                    tryAwaitRelease()
+                    if (longPressActive) {
+                        longPressActive = false
+                        scope.launch {
+                            val rec = activeRecorder ?: return@launch
+                            activeRecorder = null
+                            val path = runCatching { rec.stop() }.getOrNull()
+                            if (path != null) onRecorded(path)
+                        }
+                    }
+                },
+                onLongPress = {
+                    longPressActive = true
+                    scope.launch {
+                        when (val r = recorderProvider.get()) {
+                            is RecorderStatus.Available -> {
+                                activeRecorder = r.recorder
+                                runCatching { r.recorder.start() }.onFailure {
+                                    activeRecorder = null
+                                    longPressActive = false
+                                }
+                            }
+                            // Permission denied / unavailable: drop the long
+                            // press silently. Surfacing an error here would need
+                            // additional UI; the existing FAB flow handles those
+                            // states elsewhere.
+                            else -> longPressActive = false
+                        }
+                    }
+                },
+            )
+        },
+    )
+}
+
+@Composable
+private fun VoiceNotePlayBlock(
+    onTapPlay: () -> Unit,
+) {
+    VoiceNoteActionButton(
+        icon = Res.drawable.speaker,
+        iconTint = Color(0xFFB8B8B8),
+        label = "tap to play voice note",
+        labelColor = Color(0xFF111111),
+        containerColor = Color.White,
+        gestureModifier = Modifier.clickable { onTapPlay() },
+    )
+}
+
+/**
+ * Shared CTA button used by both the "hold to add" (orange, long-press) and "tap to
+ * play" (white, click) states of section 2. The two only differ in palette, glyph,
+ * label, and gesture, so the gesture is exposed as a [Modifier] slot ([gestureModifier])
+ * the caller layers onto the inner [Surface]. Outer section padding and inner row
+ * spacing/typography are shared so both states stay visually aligned.
+ */
+@Composable
+private fun VoiceNoteActionButton(
+    icon: DrawableResource,
+    iconTint: Color,
+    label: String,
+    labelColor: Color,
+    containerColor: Color,
+    gestureModifier: Modifier = Modifier,
+) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -396,45 +486,9 @@ private fun HoldToRecordButton(
         contentAlignment = Alignment.Center,
     ) {
         Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .pointerInput(Unit) {
-                    detectTapGestures(
-                        onPress = {
-                            tryAwaitRelease()
-                            if (longPressActive) {
-                                longPressActive = false
-                                scope.launch {
-                                    val rec = activeRecorder ?: return@launch
-                                    activeRecorder = null
-                                    val path = runCatching { rec.stop() }.getOrNull()
-                                    if (path != null) onRecorded(path)
-                                }
-                            }
-                        },
-                        onLongPress = {
-                            longPressActive = true
-                            scope.launch {
-                                when (val r = recorderProvider.get()) {
-                                    is RecorderStatus.Available -> {
-                                        activeRecorder = r.recorder
-                                        runCatching { r.recorder.start() }.onFailure {
-                                            activeRecorder = null
-                                            longPressActive = false
-                                        }
-                                    }
-                                    // Permission denied / unavailable: drop the long
-                                    // press silently. Surfacing an error here would need
-                                    // additional UI; the existing FAB flow handles those
-                                    // states elsewhere.
-                                    else -> longPressActive = false
-                                }
-                            }
-                        },
-                    )
-                },
+            modifier = gestureModifier.fillMaxWidth(),
             shape = RoundedCornerShape(10.dp),
-            color = Color(0xFFD85A00),
+            color = containerColor,
         ) {
             Row(
                 modifier = Modifier.padding(horizontal = 22.dp, vertical = 14.dp),
@@ -442,70 +496,18 @@ private fun HoldToRecordButton(
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 Icon(
-                    painter = painterResource(Res.drawable.mic),
+                    painter = painterResource(icon),
                     contentDescription = null,
-                    tint = Color.White,
+                    tint = iconTint,
                     modifier = Modifier.size(24.dp),
                 )
                 Text(
-                    text = "hold to add voice note",
-                    color = Color.White,
+                    text = label,
+                    color = labelColor,
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Medium,
                 )
             }
-        }
-    }
-}
-
-@Composable
-private fun VoiceNotePlayBlock(
-    onTapPlay: () -> Unit,
-    onClear: () -> Unit,
-) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = SHEET_SECTION_HORIZONTAL_PADDING.dp, vertical = 18.dp),
-    ) {
-        Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { onTapPlay() },
-            shape = RoundedCornerShape(10.dp),
-            color = Color.White,
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 22.dp, vertical = 14.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
-            ) {
-                // Speaker icon — placeholder using the existing `wave` drawable; the real
-                // phone-with-speaker glyph will swap in when added.
-                Icon(
-                    painter = painterResource(Res.drawable.speaker),
-                    contentDescription = null,
-                    tint = Color(0xFFB8B8B8),
-                    modifier = Modifier.size(24.dp),
-                )
-                Text(
-                    text = "tap to play voice note",
-                    color = Color(0xFF111111),
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Medium,
-                )
-            }
-        }
-        IconButton(
-            onClick = onClear,
-            modifier = Modifier.align(Alignment.TopEnd),
-        ) {
-            Icon(
-                painter = painterResource(Res.drawable.x),
-                contentDescription = "Remove voice note",
-                tint = Color.Red,
-                modifier = Modifier.size(14.dp),
-            )
         }
     }
 }
