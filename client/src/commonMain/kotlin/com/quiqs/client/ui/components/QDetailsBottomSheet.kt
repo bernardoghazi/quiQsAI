@@ -203,31 +203,37 @@ private fun QDetailsBottomSheetContent(
 
         // Section 3 — alarm on row 1, priority + tags on row 2. Read-only for now;
         // the dismiss `×` handlers and add-pill entry points will mutate the draft
-        // when wired.
-        SheetSection(shape = RoundedCornerShape(4.dp)) {
-            Column(
-                modifier = Modifier.padding(horizontal = SHEET_SECTION_HORIZONTAL_PADDING.dp, vertical = 18.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                initial.alarms.firstOrNull()?.let { alarm ->
-                    AlarmPill(alarm = alarm, onDismiss = {})
-                }
-                val priorityTone = when (initial.priority) {
-                    Priority.HIGH -> QBadgeTone.High
-                    Priority.LOW -> QBadgeTone.Low
-                    Priority.MEDIUM -> null
-                }
-                val hasPills = priorityTone != null || initial.tags.isNotEmpty()
-                if (hasPills) {
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        priorityTone?.let { tone ->
-                            DismissPill(label = initial.priority.wire, tone = tone, onDismiss = {})
-                        }
-                        initial.tags.forEach { tag ->
-                            DismissPill(label = tag, tone = QBadgeTone.Neutral, onDismiss = {})
+        // when wired. Hidden entirely when the draft has nothing to show — Priority
+        // MEDIUM is the "no badge" baseline (matches `QCard`), so it doesn't qualify.
+        val priorityTone = when (initial.priority) {
+            Priority.HIGH -> QBadgeTone.High
+            Priority.LOW -> QBadgeTone.Low
+            Priority.MEDIUM -> null
+        }
+        val showSection3 = initial.alarms.isNotEmpty() ||
+            priorityTone != null ||
+            initial.tags.isNotEmpty()
+        if (showSection3) {
+            SheetSection(shape = RoundedCornerShape(4.dp)) {
+                Column(
+                    modifier = Modifier.padding(horizontal = SHEET_SECTION_HORIZONTAL_PADDING.dp, vertical = 18.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    initial.alarms.firstOrNull()?.let { alarm ->
+                        AlarmPill(alarm = alarm, onDismiss = {})
+                    }
+                    val hasPills = priorityTone != null || initial.tags.isNotEmpty()
+                    if (hasPills) {
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            priorityTone?.let { tone ->
+                                DismissPill(label = initial.priority.wire, tone = tone, onDismiss = {})
+                            }
+                            initial.tags.forEach { tag ->
+                                DismissPill(label = tag, tone = QBadgeTone.Neutral, onDismiss = {})
+                            }
                         }
                     }
                 }
