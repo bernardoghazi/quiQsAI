@@ -492,15 +492,15 @@ private fun VoiceNoteActionButton(
             Row(
                 modifier = Modifier
                     .padding(horizontal = 22.dp, vertical = 14.dp)
-                    .widthIn(200.dp, 350.dp),
+                    .widthIn(100.dp, 350.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 Icon(
                     painter = painterResource(icon),
                     contentDescription = null,
                     tint = iconTint,
-                    modifier = Modifier.size(24.dp),
+                    modifier = Modifier.size(22.dp),
                 )
                 Text(
                     text = label,
