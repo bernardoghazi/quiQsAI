@@ -27,11 +27,11 @@ fun QText(
     modifier: Modifier = Modifier,
     color: Color = LocalContentColor.current,
     maxLines: Int = Int.MAX_VALUE,
-    overflow: TextOverflow = TextOverflow.Clip,
+    overflow: TextOverflow = TextOverflow.Ellipsis,
     textIndent: TextIndent? = null,
 ) {
     val baseStyle = when (role) {
-        QTextRole.Title -> TextStyle(fontSize = 14.sp, fontWeight = FontWeight.Medium, lineHeight = 20.sp)
+        QTextRole.Title -> TextStyle(fontSize = 14.sp, fontWeight = FontWeight.Medium, lineHeight = 21.sp)
         QTextRole.Alarm -> TextStyle(fontSize = 12.sp, fontStyle = FontStyle.Italic)
         QTextRole.Badge -> TextStyle(fontSize = 12.sp, fontStyle = FontStyle.Italic)
     }

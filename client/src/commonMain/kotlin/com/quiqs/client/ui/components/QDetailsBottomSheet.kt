@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.only
@@ -46,6 +47,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -123,7 +125,7 @@ fun QDetailsBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         containerColor = Color.Transparent,
-        scrimColor = Color(0xE6141414),
+        scrimColor = Color(0xE60F0F0F),
         dragHandle = null,
         shape = RectangleShape,
         // Apply only the bottom navigation-bar inset so the sheet sits above the system
@@ -335,7 +337,7 @@ private fun TitleEditor(
 ) {
     val titleStyle = TextStyle(
         color = Color(0xFFEDEDED),
-        fontSize = 16.sp,
+        fontSize = 14.sp,
         fontWeight = FontWeight.Medium,
     )
     BasicTextField(
@@ -354,10 +356,11 @@ private fun TitleEditor(
         decorationBox = { innerTextField ->
             if (text.isEmpty()) {
                 Text(
-                    text = "type a title",
+                    text = "New Q",
                     color = Color(0xFF555555),
-                    fontSize = 16.sp,
+                    fontSize = 14.sp,
                     fontWeight = FontWeight.Medium,
+                    fontStyle = FontStyle.Italic,
                 )
             }
             innerTextField()
