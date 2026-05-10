@@ -53,12 +53,18 @@ private fun hasPermission(context: Context): Boolean =
         PackageManager.PERMISSION_GRANTED
 
 /**
- * Writes mic audio to a WAV file in the app's cache directory.
+ * Writes mic audio to a WAV file under `filesDir/voice-notes/`.
+ *
+ * Lives in `filesDir` (not `cacheDir`) because the bottom sheet flow persists the
+ * absolute path on a Q row — `cacheDir` can be evicted by the OS, which would silently
+ * orphan voice notes after a low-storage event. The FAB voice-prompt flow shares this
+ * recorder; its recordings end up alongside the persisted ones until a cleanup pass
+ * lands.
  *
  * [start] spins up a background coroutine that streams PCM samples to disk with a
  * zero-length WAV header; [stop] finalises the file by seeking back and patching the
  * header with the actual byte counts. The returned path is handed to the LLM engine as
- * the audio attachment.
+ * the audio attachment, or stored on a Q row as its voice note.
  */
 private class AndroidAudioRecorder(private val context: Context) : AudioRecorder {
 
@@ -79,7 +85,8 @@ private class AndroidAudioRecorder(private val context: Context) : AudioRecorder
             AUDIO_FORMAT,
             bufferSize,
         )
-        val file = File(context.cacheDir, "prompt-${System.currentTimeMillis()}.wav")
+        val voiceNotesDir = File(context.filesDir, "voice-notes").apply { mkdirs() }
+        val file = File(voiceNotesDir, "voice-${System.currentTimeMillis()}.wav")
         val scope = CoroutineScope(Dispatchers.IO)
         recorder = rec
         outputFile = file

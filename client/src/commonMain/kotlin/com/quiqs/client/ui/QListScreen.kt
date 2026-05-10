@@ -83,7 +83,7 @@ fun QListScreen(
     val qs = remember(all, filterSort) { filterSort.applyTo(all) }
     val scope = rememberCoroutineScope()
 
-    val vm: QListViewModel = viewModel { QListViewModel(agentProvider, recorderProvider) }
+    val vm: QListViewModel = viewModel { QListViewModel(agentProvider, recorderProvider, repository) }
     val voiceState by vm.voiceState.collectAsState()
     LaunchedEffect(vm, onFilterSortApplied) {
         vm.filterSortApplied.collect { onFilterSortApplied(it) }

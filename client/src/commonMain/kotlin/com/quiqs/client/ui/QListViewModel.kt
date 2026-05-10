@@ -9,6 +9,7 @@ import com.quiqs.client.audio.RecorderProvider
 import com.quiqs.client.audio.RecorderStatus
 import com.quiqs.client.ui.components.VoicePromptState
 import com.quiqs.shared.QFilterSort
+import com.quiqs.shared.QRepository
 import com.quiqs.shared.llm.QAgent
 import com.quiqs.shared.llm.QAgentOutcome
 import com.quiqs.shared.llm.QCommandResult
@@ -35,6 +36,7 @@ import kotlinx.coroutines.launch
 class QListViewModel(
     private val agentProvider: AgentProvider,
     private val recorderProvider: RecorderProvider,
+    private val repository: QRepository,
 ) : ViewModel() {
 
     private val _voiceState = MutableStateFlow<VoicePromptState>(VoicePromptState.Idle)
@@ -129,6 +131,18 @@ class QListViewModel(
             _voiceState.value = when (outcome) {
                 is QAgentOutcome.Handled -> {
                     val res = outcome.result
+                    // Attach the captured WAV as the new Q's voice note (or replace
+                    // the existing voice note when the agent edits an existing Q).
+                    // Recordings used for FilterSort/Answered/Failed outcomes have no
+                    // Q to bind to and are left as orphans — cleanup is a follow-up.
+                    val attachTo = when (res) {
+                        is QCommandResult.Created -> res.id
+                        is QCommandResult.Updated -> res.id
+                        else -> null
+                    }
+                    if (attachTo != null) {
+                        runCatching { repository.setVoiceNote(attachTo, path) }
+                    }
                     if (res is QCommandResult.FilterSorted) _filterSortApplied.trySend(res.spec)
                     VoicePromptState.Done(res.message)
                 }
