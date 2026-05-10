@@ -3,7 +3,6 @@ package com.quiqs.client.ui.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,7 +12,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
@@ -21,6 +19,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -65,8 +64,9 @@ import quiqsai.client.generated.resources.Res
 import quiqsai.client.generated.resources.clock
 import quiqsai.client.generated.resources.exclamation
 import quiqsai.client.generated.resources.label
+import quiqsai.client.generated.resources.mic
 import quiqsai.client.generated.resources.plus
-import quiqsai.client.generated.resources.wave
+import quiqsai.client.generated.resources.speaker
 import quiqsai.client.generated.resources.x
 import kotlin.time.Instant
 
@@ -442,7 +442,7 @@ private fun HoldToRecordButton(
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 Icon(
-                    painter = painterResource(Res.drawable.wave),
+                    painter = painterResource(Res.drawable.mic),
                     contentDescription = null,
                     tint = Color.White,
                     modifier = Modifier.size(20.dp),
@@ -473,14 +473,6 @@ private fun VoiceNotePlayBlock(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            // Speaker icon — placeholder using the existing `wave` drawable; the real
-            // phone-with-speaker glyph will swap in when added.
-            Icon(
-                painter = painterResource(Res.drawable.wave),
-                contentDescription = null,
-                tint = Color(0xFFB8B8B8),
-                modifier = Modifier.size(28.dp),
-            )
             Surface(
                 modifier = Modifier
                     .weight(1f)
@@ -488,13 +480,27 @@ private fun VoiceNotePlayBlock(
                 shape = RoundedCornerShape(10.dp),
                 color = Color.White,
             ) {
-                Text(
-                    text = "tap to play voice note",
-                    color = Color(0xFF111111),
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Medium,
-                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
-                )
+                Row(
+                    modifier = Modifier.padding(horizontal = 22.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                ) {
+                    // Speaker icon — placeholder using the existing `wave` drawable; the real
+                    // phone-with-speaker glyph will swap in when added.
+                    Icon(
+                        painter = painterResource(Res.drawable.speaker),
+                        contentDescription = null,
+                        tint = Color(0xFFB8B8B8),
+                        modifier = Modifier.size(28.dp),
+                    )
+                    Text(
+                        text = "tap to play voice note",
+                        color = Color(0xFF111111),
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
+                    )
+                }
             }
         }
         IconButton(
@@ -615,7 +621,7 @@ private fun QDetailsBottomSheetEmptyPreviewDark() {
         val scheme = if (LocalThemeIsDark.current) QuiqsDarkColorScheme else QuiqsColorScheme
         MaterialTheme(colorScheme = scheme) {
             Box(modifier = Modifier.background(color = Color(0xFF0A0A0A))) {
-                QDetailsBottomSheetContent(initial = QDraft())
+                QDetailsBottomSheetContent(initial = QDraft().copy(voiceNotePath = "xyz"))
             }
         }
     }
