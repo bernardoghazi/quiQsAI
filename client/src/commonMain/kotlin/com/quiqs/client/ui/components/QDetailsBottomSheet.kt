@@ -3,6 +3,7 @@ package com.quiqs.client.ui.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -42,7 +43,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -56,7 +59,6 @@ import com.quiqs.client.audio.RecorderProvider
 import com.quiqs.client.audio.RecorderStatus
 import com.quiqs.shared.Alarm
 import com.quiqs.shared.Priority
-import com.quiqs.shared.Q
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.painterResource
 import quiqsai.client.generated.resources.Res
@@ -67,19 +69,34 @@ import quiqsai.client.generated.resources.plus
 import quiqsai.client.generated.resources.wave
 import quiqsai.client.generated.resources.x
 import kotlin.time.Instant
-import kotlin.uuid.Uuid
 
 
 const val SHEET_SECTION_HORIZONTAL_PADDING = 22
 
 /**
- * Bottom sheet shown when a Q is tapped on the list. Replaces the navigation push to
- * `QDetailScreen` with an in-place inspector that surfaces the Q's text, alarm/priority/
- * tag pills, and a placeholder action bar.
+ * Editable fields the sheet collects. Bundled into one struct so adding new fields
+ * (right now alarms / priority / tags pass through unchanged; future entry points can
+ * mutate them) only ripples through one signature instead of every `onSave` lambda
+ * along the way. Convert to/from [Q] at the call site.
+ */
+data class QDraft(
+    val text: String = "",
+    val voiceNotePath: String? = null,
+    val alarms: List<Alarm> = emptyList(),
+    val priority: Priority = Priority.MEDIUM,
+    val tags: List<String> = emptyList(),
+)
+
+/**
+ * Bottom sheet for editing a Q — used both when the user taps an existing Q (the draft
+ * is seeded from that Q's fields) and when they tap the bottom bar's `+` (the draft
+ * starts empty). Field changes live inside the sheet until the user taps Save, which
+ * fires [onSave] with the collected draft; dismissing via scrim tap or back press
+ * discards everything.
  *
- * The sheet is visually composed of four independent rounded surfaces separated by 8 dp
+ * The sheet is visually composed of four independent rounded surfaces separated by 4 dp
  * gaps, so its `containerColor` is transparent and the gaps fall through to the dimmed
- * scrim. Clicking outside (scrim tap) or back-press dismisses via [onDismiss].
+ * scrim.
  *
  * Pill `×` glyphs and the action-bar icons are temporary placeholders rendered with
  * `Res.drawable.plus`; both will be swapped for real assets once they land.
@@ -87,10 +104,9 @@ const val SHEET_SECTION_HORIZONTAL_PADDING = 22
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun QDetailsBottomSheet(
-    q: Q,
+    initial: QDraft,
     recorderProvider: RecorderProvider,
-    onSetVoiceNote: (String) -> Unit,
-    onClearVoiceNote: () -> Unit,
+    onSave: (QDraft) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -107,10 +123,9 @@ fun QDetailsBottomSheet(
         contentWindowInsets = { WindowInsets.navigationBars.only(WindowInsetsSides.Bottom) },
     ) {
         QDetailsBottomSheetContent(
-            q = q,
+            initial = initial,
             recorderProvider = recorderProvider,
-            onSetVoiceNote = onSetVoiceNote,
-            onClearVoiceNote = onClearVoiceNote,
+            onSave = onSave,
         )
     }
 }
@@ -119,22 +134,30 @@ fun QDetailsBottomSheet(
  * The sheet's body, factored out so it can be rendered in `@Preview` (the surrounding
  * [ModalBottomSheet] requires a real Window and won't render in tooling).
  *
- * The voice-note hooks default to no-op stubs so previews can render both states without
- * a runtime recorder.
+ * The sheet keeps a local draft seeded from [initial]. Field edits update that draft
+ * only; nothing is persisted until the user taps Save (which calls [onSave] with the
+ * draft). Dismissing the sheet without saving drops the draft entirely.
+ *
+ * Alarms / priority / tags currently pass straight through the draft unchanged — they
+ * render as read-only pills. As entry points for editing them land, mutate the draft
+ * here.
  */
 @Composable
 private fun QDetailsBottomSheetContent(
-    q: Q,
+    initial: QDraft,
     recorderProvider: RecorderProvider = NoRecorder,
-    onSetVoiceNote: (String) -> Unit = {},
-    onClearVoiceNote: () -> Unit = {},
+    onSave: (QDraft) -> Unit = {},
 ) {
+    // Re-mounting the sheet (dismiss → reopen) gives us fresh state, so plain `remember`
+    // is fine — no need to key on `initial`.
+    var draftText by remember { mutableStateOf(initial.text) }
+    var draftVoiceNotePath by remember { mutableStateOf(initial.voiceNotePath) }
+
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        // Section 1 — Q text. Top corners rounded more than the others to read as the
-        // sheet's header.
+        // Section 1 — editable title.
         SheetSection(
             shape = RoundedCornerShape(
                 topStart = 14.dp,
@@ -143,56 +166,49 @@ private fun QDetailsBottomSheetContent(
                 bottomEnd = 4.dp,
             ),
         ) {
-            Text(
-                text = q.text,
-                color = Color(0xFFEDEDED),
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Medium,
-                modifier = Modifier.padding(
-                    start = SHEET_SECTION_HORIZONTAL_PADDING.dp,
-                    top = 22.dp,
-                    end = SHEET_SECTION_HORIZONTAL_PADDING.dp,
-                    bottom = 18.dp
-                ),
+            TitleEditor(
+                text = draftText,
+                onTextChange = { draftText = it },
             )
         }
 
-        // Section 2 — voice note. Two visual states based on whether the Q has audio
-        // attached: a press-and-hold "add" button when none, otherwise a tap-to-play
-        // pill with an inline delete affordance.
+        // Section 2 — voice note. Recording lands on the local draft; persistence
+        // happens on Save, so dismissing without saving discards the take.
         SheetSection(shape = RoundedCornerShape(4.dp)) {
             VoiceNoteSection(
-                voiceNotePath = q.voiceNotePath,
+                voiceNotePath = draftVoiceNotePath,
                 recorderProvider = recorderProvider,
-                onSetVoiceNote = onSetVoiceNote,
-                onClearVoiceNote = onClearVoiceNote,
+                onSetVoiceNote = { draftVoiceNotePath = it },
+                onClearVoiceNote = { draftVoiceNotePath = null },
             )
         }
 
-        // Section 3 — alarm on row 1, priority + tags on row 2.
+        // Section 3 — alarm on row 1, priority + tags on row 2. Read-only for now;
+        // the dismiss `×` handlers and add-pill entry points will mutate the draft
+        // when wired.
         SheetSection(shape = RoundedCornerShape(4.dp)) {
             Column(
                 modifier = Modifier.padding(horizontal = SHEET_SECTION_HORIZONTAL_PADDING.dp, vertical = 18.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                q.alarms.firstOrNull()?.let { alarm ->
+                initial.alarms.firstOrNull()?.let { alarm ->
                     AlarmPill(alarm = alarm, onDismiss = {})
                 }
-                val priorityTone = when (q.priority) {
+                val priorityTone = when (initial.priority) {
                     Priority.HIGH -> QBadgeTone.High
                     Priority.LOW -> QBadgeTone.Low
                     Priority.MEDIUM -> null
                 }
-                val hasPills = priorityTone != null || q.tags.isNotEmpty()
+                val hasPills = priorityTone != null || initial.tags.isNotEmpty()
                 if (hasPills) {
                     FlowRow(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         priorityTone?.let { tone ->
-                            DismissPill(label = q.priority.wire, tone = tone, onDismiss = {})
+                            DismissPill(label = initial.priority.wire, tone = tone, onDismiss = {})
                         }
-                        q.tags.forEach { tag ->
+                        initial.tags.forEach { tag ->
                             DismissPill(label = tag, tone = QBadgeTone.Neutral, onDismiss = {})
                         }
                     }
@@ -200,8 +216,8 @@ private fun QDetailsBottomSheetContent(
             }
         }
 
-        // Section 4 — action bar. Bottom corners are square so the section abuts the
-        // bottom of the screen.
+        // Section 4 — action bar. The icon buttons remain placeholders pending the
+        // alarm/tag entry-point work; Save commits the draft.
         SheetSection(
             shape = RoundedCornerShape(
                 topStart = 4.dp,
@@ -250,16 +266,68 @@ private fun QDetailsBottomSheetContent(
                     )
                 }
                 Spacer(modifier = Modifier.weight(1f))
-                TextButton(onClick = {}) {
+                val saveEnabled = draftText.isNotBlank() || draftVoiceNotePath != null
+                TextButton(
+                    onClick = {
+                        onSave(
+                            initial.copy(
+                                text = draftText.trim(),
+                                voiceNotePath = draftVoiceNotePath,
+                            )
+                        )
+                    },
+                    enabled = saveEnabled,
+                ) {
                     Text(
                         text = "Save",
-                        color = Color(0xFFEDEDED),
+                        color = if (saveEnabled) Color(0xFFEDEDED) else Color(0xFF555555),
                         fontWeight = FontWeight.ExtraBold,
                     )
                 }
             }
         }
     }
+}
+
+/**
+ * `BasicTextField` wrapper styled to match the View-mode title `Text` so toggling between
+ * the two doesn't shift layout. Renders a dim placeholder while the draft is empty.
+ */
+@Composable
+private fun TitleEditor(
+    text: String,
+    onTextChange: (String) -> Unit,
+) {
+    val titleStyle = TextStyle(
+        color = Color(0xFFEDEDED),
+        fontSize = 16.sp,
+        fontWeight = FontWeight.Medium,
+    )
+    BasicTextField(
+        value = text,
+        onValueChange = onTextChange,
+        textStyle = titleStyle,
+        cursorBrush = SolidColor(Color(0xFFEDEDED)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(
+                start = SHEET_SECTION_HORIZONTAL_PADDING.dp,
+                top = 22.dp,
+                end = SHEET_SECTION_HORIZONTAL_PADDING.dp,
+                bottom = 18.dp,
+            ),
+        decorationBox = { innerTextField ->
+            if (text.isEmpty()) {
+                Text(
+                    text = "type a title",
+                    color = Color(0xFF555555),
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Medium,
+                )
+            }
+            innerTextField()
+        },
+    )
 }
 
 @Composable
@@ -503,17 +571,14 @@ private fun pillColors(tone: QBadgeTone): PillColors = when (tone) {
     QBadgeTone.Low -> PillColors(bg = Color(0xFFF1F4F8), fg = Color(0xFF8893A1))
 }
 
-private fun previewSampleQ(): Q {
+private fun previewSeededDraft(): QDraft {
     val now = Instant.fromEpochMilliseconds(1_746_280_800_000)
-    return Q(
-        id = Uuid.parse("00000000-0000-0000-0000-000000000001"),
+    return QDraft(
         text = "Get groceries for the party.",
-        tags = listOf("work", "personal"),
+        voiceNotePath = null,
         alarms = listOf(Alarm.OneOffTime(at = now)),
         priority = Priority.HIGH,
-        completed = false,
-        createdAt = now,
-        updatedAt = now,
+        tags = listOf("work", "personal"),
     )
 }
 
@@ -524,7 +589,7 @@ private fun QDetailsBottomSheetPreview() {
         val scheme = if (LocalThemeIsDark.current) QuiqsDarkColorScheme else QuiqsColorScheme
         MaterialTheme(colorScheme = scheme) {
             Box(modifier = Modifier.background(color = Color(0xFFF7F4EE))) {
-                QDetailsBottomSheetContent(q = previewSampleQ())
+                QDetailsBottomSheetContent(initial = previewSeededDraft())
             }
         }
     }
@@ -537,7 +602,20 @@ private fun QDetailsBottomSheetPreviewDark() {
         val scheme = if (LocalThemeIsDark.current) QuiqsDarkColorScheme else QuiqsColorScheme
         MaterialTheme(colorScheme = scheme) {
             Box(modifier = Modifier.background(color = Color(0xFF0A0A0A))) {
-                QDetailsBottomSheetContent(q = previewSampleQ())
+                QDetailsBottomSheetContent(initial = previewSeededDraft())
+            }
+        }
+    }
+}
+
+@Preview
+@Composable
+private fun QDetailsBottomSheetEmptyPreviewDark() {
+    CompositionLocalProvider(LocalThemeIsDark provides true) {
+        val scheme = if (LocalThemeIsDark.current) QuiqsDarkColorScheme else QuiqsColorScheme
+        MaterialTheme(colorScheme = scheme) {
+            Box(modifier = Modifier.background(color = Color(0xFF0A0A0A))) {
+                QDetailsBottomSheetContent(initial = QDraft())
             }
         }
     }

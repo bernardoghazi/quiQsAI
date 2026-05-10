@@ -37,8 +37,8 @@ import com.quiqs.client.audio.RecorderProvider
 import com.quiqs.client.ui.components.QBottomBar
 import com.quiqs.client.ui.components.QCard
 import com.quiqs.client.ui.components.QDetailsBottomSheet
+import com.quiqs.client.ui.components.QDraft
 import com.quiqs.client.ui.components.QVoicePromptDialog
-import com.quiqs.shared.Q
 import com.quiqs.shared.QFilterSort
 import com.quiqs.shared.QRepository
 import com.quiqs.shared.applyTo
@@ -93,9 +93,10 @@ fun QListScreen(
     // shared `onPress` handler only ends the recording when a long press actually fired.
     var longPressActive by remember { mutableStateOf(false) }
 
-    // Drives the details bottom sheet — set when the user taps a Q card, cleared on
-    // dismiss (scrim tap or back press).
-    var selectedQ by remember { mutableStateOf<Q?>(null) }
+    // Drives the details bottom sheet. Set when the user taps a Q card (initial draft
+    // seeded from that Q) or the bottom bar's `+` (empty draft); cleared on dismiss
+    // (scrim tap or back press), discarding anything the user typed/recorded.
+    var sheetRequest by remember { mutableStateOf<SheetRequest?>(null) }
 
     Scaffold(
         containerColor = Color.Transparent,
@@ -150,11 +151,25 @@ fun QListScreen(
             }
         },
         bottomBar = {
-            // Bottom-bar actions are intentionally no-ops for now — wiring lands
-            // alongside the dedicated UI affordances in a follow-up.
             QBottomBar(
                 onFilterSort = {},
-                onAdd = {},
+                onAdd = {
+                    sheetRequest = SheetRequest(
+                        initial = QDraft(),
+                        onSave = { draft ->
+                            scope.launch {
+                                repository.create(
+                                    text = draft.text,
+                                    tags = draft.tags,
+                                    alarms = draft.alarms,
+                                    priority = draft.priority,
+                                    voiceNotePath = draft.voiceNotePath,
+                                )
+                                sheetRequest = null
+                            }
+                        },
+                    )
+                },
                 onOverflow = {},
 //                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
             )
@@ -194,7 +209,32 @@ fun QListScreen(
                         onCheckedChange = { checked ->
                             scope.launch { repository.update(q.id, completed = checked) }
                         },
-                        onClick = { selectedQ = q },
+                        onClick = {
+                            sheetRequest = SheetRequest(
+                                initial = QDraft(
+                                    text = q.text,
+                                    voiceNotePath = q.voiceNotePath,
+                                    alarms = q.alarms,
+                                    priority = q.priority,
+                                    tags = q.tags,
+                                ),
+                                onSave = { draft ->
+                                    scope.launch {
+                                        repository.update(
+                                            id = q.id,
+                                            text = draft.text,
+                                            tags = draft.tags,
+                                            alarms = draft.alarms,
+                                            priority = draft.priority,
+                                        )
+                                        if (draft.voiceNotePath != q.voiceNotePath) {
+                                            repository.setVoiceNote(q.id, draft.voiceNotePath)
+                                        }
+                                        sheetRequest = null
+                                    }
+                                },
+                            )
+                        },
                     )
                 }
             }
@@ -203,17 +243,22 @@ fun QListScreen(
 
     QVoicePromptDialog(state = voiceState, onDismiss = vm::dismissDialog)
 
-    selectedQ?.let { q ->
+    sheetRequest?.let { request ->
         QDetailsBottomSheet(
-            q = q,
+            initial = request.initial,
             recorderProvider = recorderProvider,
-            onSetVoiceNote = { path ->
-                scope.launch { repository.setVoiceNote(q.id, path) }
-            },
-            onClearVoiceNote = {
-                scope.launch { repository.setVoiceNote(q.id, null) }
-            },
-            onDismiss = { selectedQ = null },
+            onSave = request.onSave,
+            onDismiss = { sheetRequest = null },
         )
     }
 }
+
+/**
+ * Local holder pairing the draft to seed the sheet with and the action to run when the
+ * user taps Save. The card-tap path captures the source Q's id; the `+` path doesn't —
+ * each call site builds its own [onSave].
+ */
+private data class SheetRequest(
+    val initial: QDraft,
+    val onSave: (QDraft) -> Unit,
+)
