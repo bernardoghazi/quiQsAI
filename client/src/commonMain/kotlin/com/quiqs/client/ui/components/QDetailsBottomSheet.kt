@@ -98,7 +98,7 @@ fun QDetailsBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         containerColor = Color.Transparent,
-        scrimColor = Color.Black.copy(alpha = 0.8f),
+        scrimColor = Color(0xE6141414),
         dragHandle = null,
         shape = RectangleShape,
         // Apply only the bottom navigation-bar inset so the sheet sits above the system
@@ -270,7 +270,7 @@ private fun SheetSection(
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = shape,
-        color = Color(0xFF080808),
+        color = Color(0xFF000000),
     ) {
         content()
     }
