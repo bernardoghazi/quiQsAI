@@ -15,6 +15,9 @@ import kotlin.uuid.Uuid
  * @property alarms Triggers that surface this Q to the user. See [Alarm].
  * @property priority User-set importance. Defaults to [Priority.MEDIUM] when unspecified.
  * @property completed Whether the user has marked the Q as done.
+ * @property voiceNotePath Absolute path to a recorded voice-note file, or `null` if the
+ *   Q has no attached audio. Set either by the LLM-driven voice-add flow or by the user
+ *   manually attaching a recording from the details sheet.
  * @property createdAt When the Q was first persisted.
  * @property updatedAt When the Q was last modified.
  */
@@ -25,6 +28,7 @@ data class Q(
     val alarms: List<Alarm> = emptyList(),
     val priority: Priority = Priority.MEDIUM,
     val completed: Boolean = false,
+    val voiceNotePath: String? = null,
     val createdAt: Instant,
     val updatedAt: Instant,
 )

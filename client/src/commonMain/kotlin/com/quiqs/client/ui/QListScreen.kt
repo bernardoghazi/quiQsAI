@@ -204,6 +204,16 @@ fun QListScreen(
     QVoicePromptDialog(state = voiceState, onDismiss = vm::dismissDialog)
 
     selectedQ?.let { q ->
-        QDetailsBottomSheet(q = q, onDismiss = { selectedQ = null })
+        QDetailsBottomSheet(
+            q = q,
+            recorderProvider = recorderProvider,
+            onSetVoiceNote = { path ->
+                scope.launch { repository.setVoiceNote(q.id, path) }
+            },
+            onClearVoiceNote = {
+                scope.launch { repository.setVoiceNote(q.id, null) }
+            },
+            onDismiss = { selectedQ = null },
+        )
     }
 }

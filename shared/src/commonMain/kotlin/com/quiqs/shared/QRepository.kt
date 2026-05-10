@@ -45,11 +45,16 @@ interface QRepository {
         alarms: List<Alarm> = emptyList(),
         priority: Priority = Priority.MEDIUM,
         completed: Boolean = false,
+        voiceNotePath: String? = null,
     ): Q
 
     /**
      * Partially updates an existing Q. Any argument left `null` keeps the stored value.
      * Returns the updated [Q], or `null` if no row with [id] exists.
+     *
+     * Note that [Q.voiceNotePath] is intentionally absent — its `null` value is
+     * meaningful (the Q has no voice note), so it can't share the "null = unchanged"
+     * convention used for the other fields. Use [setVoiceNote] instead.
      */
     suspend fun update(
         id: Uuid,
@@ -59,6 +64,12 @@ interface QRepository {
         priority: Priority? = null,
         completed: Boolean? = null,
     ): Q?
+
+    /**
+     * Attaches [path] to the Q with [id], or clears the voice note when [path] is
+     * `null`. Returns the updated [Q], or `null` if no row matches.
+     */
+    suspend fun setVoiceNote(id: Uuid, path: String?): Q?
 
     /** Deletes the row with [id]. No-op if the row does not exist. */
     suspend fun delete(id: Uuid)
@@ -105,6 +116,7 @@ class SqlDelightQRepository(driver: SqlDriver) : QRepository {
         alarms: List<Alarm>,
         priority: Priority,
         completed: Boolean,
+        voiceNotePath: String?,
     ): Q {
         val now = Clock.System.now()
         val q = Q(
@@ -114,6 +126,7 @@ class SqlDelightQRepository(driver: SqlDriver) : QRepository {
             alarms = alarms,
             priority = priority,
             completed = completed,
+            voiceNotePath = voiceNotePath,
             createdAt = now,
             updatedAt = now,
         )
@@ -124,6 +137,7 @@ class SqlDelightQRepository(driver: SqlDriver) : QRepository {
             alarmsJson = json.encodeToString(alarmsSerializer, q.alarms),
             priority = q.priority.wire,
             completed = if (q.completed) 1L else 0L,
+            voiceNotePath = q.voiceNotePath,
             createdAt = q.createdAt.toEpochMilliseconds(),
             updatedAt = q.updatedAt.toEpochMilliseconds(),
         )
@@ -151,6 +165,7 @@ class SqlDelightQRepository(driver: SqlDriver) : QRepository {
             alarmsJson = newAlarmsJson,
             priority = newPriority,
             completed = newCompleted,
+            voiceNotePath = existing.voiceNotePath,
             updatedAt = now.toEpochMilliseconds(),
             id = existing.id,
         )
@@ -161,6 +176,27 @@ class SqlDelightQRepository(driver: SqlDriver) : QRepository {
                 alarmsJson = newAlarmsJson,
                 priority = newPriority,
                 completed = newCompleted,
+                updatedAt = now.toEpochMilliseconds(),
+            )
+        )
+    }
+
+    override suspend fun setVoiceNote(id: Uuid, path: String?): Q? {
+        val existing = queries.selectById(id.toString()).executeAsOneOrNull() ?: return null
+        val now = Clock.System.now()
+        queries.updateFields(
+            text = existing.text,
+            tagsJson = existing.tagsJson,
+            alarmsJson = existing.alarmsJson,
+            priority = existing.priority,
+            completed = existing.completed,
+            voiceNotePath = path,
+            updatedAt = now.toEpochMilliseconds(),
+            id = existing.id,
+        )
+        return toDomain(
+            existing.copy(
+                voiceNotePath = path,
                 updatedAt = now.toEpochMilliseconds(),
             )
         )
@@ -178,6 +214,7 @@ class SqlDelightQRepository(driver: SqlDriver) : QRepository {
         alarms = json.decodeFromString(alarmsSerializer, row.alarmsJson),
         priority = Priority.fromWire(row.priority),
         completed = row.completed != 0L,
+        voiceNotePath = row.voiceNotePath,
         createdAt = Instant.fromEpochMilliseconds(row.createdAt),
         updatedAt = Instant.fromEpochMilliseconds(row.updatedAt),
     )

@@ -2,6 +2,7 @@ package com.quiqs.client.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,12 +31,18 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -43,15 +50,21 @@ import androidx.compose.ui.unit.sp
 import com.quiqs.client.LocalThemeIsDark
 import com.quiqs.client.QuiqsColorScheme
 import com.quiqs.client.QuiqsDarkColorScheme
+import com.quiqs.client.audio.AudioRecorder
+import com.quiqs.client.audio.NoRecorder
+import com.quiqs.client.audio.RecorderProvider
+import com.quiqs.client.audio.RecorderStatus
 import com.quiqs.shared.Alarm
 import com.quiqs.shared.Priority
 import com.quiqs.shared.Q
+import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.painterResource
 import quiqsai.client.generated.resources.Res
 import quiqsai.client.generated.resources.clock
 import quiqsai.client.generated.resources.exclamation
 import quiqsai.client.generated.resources.label
 import quiqsai.client.generated.resources.plus
+import quiqsai.client.generated.resources.wave
 import quiqsai.client.generated.resources.x
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
@@ -75,6 +88,9 @@ const val SHEET_SECTION_HORIZONTAL_PADDING = 22
 @Composable
 fun QDetailsBottomSheet(
     q: Q,
+    recorderProvider: RecorderProvider,
+    onSetVoiceNote: (String) -> Unit,
+    onClearVoiceNote: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -90,16 +106,29 @@ fun QDetailsBottomSheet(
         // stay zero because the sheet anchors to the bottom and spans full width.
         contentWindowInsets = { WindowInsets.navigationBars.only(WindowInsetsSides.Bottom) },
     ) {
-        QDetailsBottomSheetContent(q = q)
+        QDetailsBottomSheetContent(
+            q = q,
+            recorderProvider = recorderProvider,
+            onSetVoiceNote = onSetVoiceNote,
+            onClearVoiceNote = onClearVoiceNote,
+        )
     }
 }
 
 /**
  * The sheet's body, factored out so it can be rendered in `@Preview` (the surrounding
  * [ModalBottomSheet] requires a real Window and won't render in tooling).
+ *
+ * The voice-note hooks default to no-op stubs so previews can render both states without
+ * a runtime recorder.
  */
 @Composable
-private fun QDetailsBottomSheetContent(q: Q) {
+private fun QDetailsBottomSheetContent(
+    q: Q,
+    recorderProvider: RecorderProvider = NoRecorder,
+    onSetVoiceNote: (String) -> Unit = {},
+    onClearVoiceNote: () -> Unit = {},
+) {
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -128,21 +157,16 @@ private fun QDetailsBottomSheetContent(q: Q) {
             )
         }
 
-        // Section 2 — placeholder; real content (voice-note playback, etc.) lands later.
+        // Section 2 — voice note. Two visual states based on whether the Q has audio
+        // attached: a press-and-hold "add" button when none, otherwise a tap-to-play
+        // pill with an inline delete affordance.
         SheetSection(shape = RoundedCornerShape(4.dp)) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(96.dp)
-                    .padding(horizontal = SHEET_SECTION_HORIZONTAL_PADDING.dp),
-                contentAlignment = Alignment.CenterStart,
-            ) {
-                Text(
-                    text = "Section 2 placeholder",
-                    color = Color(0xFF666666),
-                    fontSize = 14.sp,
-                )
-            }
+            VoiceNoteSection(
+                voiceNotePath = q.voiceNotePath,
+                recorderProvider = recorderProvider,
+                onSetVoiceNote = onSetVoiceNote,
+                onClearVoiceNote = onClearVoiceNote,
+            )
         }
 
         // Section 3 — alarm on row 1, priority + tags on row 2.
@@ -249,6 +273,173 @@ private fun SheetSection(
         color = Color(0xFF080808),
     ) {
         content()
+    }
+}
+
+/**
+ * Two-state voice-note panel.
+ *
+ * No audio attached: a wide orange button. Long-pressing the button asks
+ * [recorderProvider] for an [AudioRecorder] (which prompts for the mic permission on
+ * first use), starts capture, and on release stops the recorder and forwards the
+ * resulting absolute path through [onSetVoiceNote].
+ *
+ * Audio attached: a speaker glyph plus a white "tap to play voice note" pill, with an
+ * `×` in the top-right that calls [onClearVoiceNote] to detach the recording.
+ *
+ * Playback isn't wired yet — the play pill currently does nothing on tap.
+ */
+@Composable
+private fun VoiceNoteSection(
+    voiceNotePath: String?,
+    recorderProvider: RecorderProvider,
+    onSetVoiceNote: (String) -> Unit,
+    onClearVoiceNote: () -> Unit,
+) {
+    if (voiceNotePath == null) {
+        HoldToRecordButton(
+            recorderProvider = recorderProvider,
+            onRecorded = onSetVoiceNote,
+        )
+    } else {
+        VoiceNotePlayBlock(
+            onTapPlay = { /* Playback wiring lands later. */ },
+            onClear = onClearVoiceNote,
+        )
+    }
+}
+
+@Composable
+private fun HoldToRecordButton(
+    recorderProvider: RecorderProvider,
+    onRecorded: (String) -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    // Track whether the current pointer-down has crossed the long-press threshold so
+    // the shared `onPress` handler only stops recording on releases that actually
+    // started one. Mirrors the FAB voice-prompt gesture in `QListScreen`.
+    var longPressActive by remember { mutableStateOf(false) }
+    var activeRecorder by remember { mutableStateOf<AudioRecorder?>(null) }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = SHEET_SECTION_HORIZONTAL_PADDING.dp, vertical = 18.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .pointerInput(Unit) {
+                    detectTapGestures(
+                        onPress = {
+                            tryAwaitRelease()
+                            if (longPressActive) {
+                                longPressActive = false
+                                scope.launch {
+                                    val rec = activeRecorder ?: return@launch
+                                    activeRecorder = null
+                                    val path = runCatching { rec.stop() }.getOrNull()
+                                    if (path != null) onRecorded(path)
+                                }
+                            }
+                        },
+                        onLongPress = {
+                            longPressActive = true
+                            scope.launch {
+                                when (val r = recorderProvider.get()) {
+                                    is RecorderStatus.Available -> {
+                                        activeRecorder = r.recorder
+                                        runCatching { r.recorder.start() }.onFailure {
+                                            activeRecorder = null
+                                            longPressActive = false
+                                        }
+                                    }
+                                    // Permission denied / unavailable: drop the long
+                                    // press silently. Surfacing an error here would need
+                                    // additional UI; the existing FAB flow handles those
+                                    // states elsewhere.
+                                    else -> longPressActive = false
+                                }
+                            }
+                        },
+                    )
+                },
+            shape = RoundedCornerShape(10.dp),
+            color = Color(0xFFD85A00),
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 22.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                Icon(
+                    painter = painterResource(Res.drawable.wave),
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(20.dp),
+                )
+                Text(
+                    text = "hold to add voice note",
+                    color = Color.White,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Medium,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun VoiceNotePlayBlock(
+    onTapPlay: () -> Unit,
+    onClear: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = SHEET_SECTION_HORIZONTAL_PADDING.dp, vertical = 18.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            // Speaker icon — placeholder using the existing `wave` drawable; the real
+            // phone-with-speaker glyph will swap in when added.
+            Icon(
+                painter = painterResource(Res.drawable.wave),
+                contentDescription = null,
+                tint = Color(0xFFB8B8B8),
+                modifier = Modifier.size(28.dp),
+            )
+            Surface(
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable { onTapPlay() },
+                shape = RoundedCornerShape(10.dp),
+                color = Color.White,
+            ) {
+                Text(
+                    text = "tap to play voice note",
+                    color = Color(0xFF111111),
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
+                )
+            }
+        }
+        IconButton(
+            onClick = onClear,
+            modifier = Modifier.align(Alignment.TopEnd),
+        ) {
+            Icon(
+                painter = painterResource(Res.drawable.x),
+                contentDescription = "Remove voice note",
+                tint = Color.White,
+                modifier = Modifier.size(14.dp),
+            )
+        }
     }
 }
 
