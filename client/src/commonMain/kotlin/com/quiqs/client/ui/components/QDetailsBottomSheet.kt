@@ -177,6 +177,7 @@ private fun QDetailsBottomSheetContent(
         priorityMenuOpen = false
     }
 
+    Box(modifier = Modifier.fillMaxWidth()) {
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -356,6 +357,22 @@ private fun QDetailsBottomSheetContent(
                     )
                 }
             }
+        }
+    }
+        // Scrim drawn over the sheet's content while the priority picker is open so
+        // the popup (rendered in its own popup window above this scrim) reads as the
+        // foreground layer. The popup's `onDismissRequest` already handles outside-tap
+        // dismissal; the scrim's `pointerInput` is a belt-and-braces consumer so taps
+        // can't slip through to the title editor or save button underneath.
+        if (priorityMenuOpen) {
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .background(Color(0xCC000000))
+                    .pointerInput(Unit) {
+                        detectTapGestures { priorityMenuOpen = false }
+                    },
+            )
         }
     }
 }
