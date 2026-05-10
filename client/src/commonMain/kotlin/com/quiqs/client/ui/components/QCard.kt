@@ -78,6 +78,7 @@ fun QCard(
                     role = QTextRole.Title,
                     modifier = Modifier.fillMaxWidth(),
                     textIndent = titleIndent,
+                    maxLines = 4
                 )
                 QCheckbox(
                     checked = checked,
@@ -154,7 +155,9 @@ private fun QCardDarkPreview() {
     val now = Instant.fromEpochMilliseconds(1_746_280_800_000)
     val sample = Q(
         id = Uuid.parse("00000000-0000-0000-0000-000000000001"),
-        text = "Pick up Stella from school and bla bla bla bla bla bla bla bla bla bla",
+        text = """
+            |Pick up Stella from school and bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla.
+            |""".trimMargin(),
         tags = listOf("family", "personal"),
         alarms = listOf(Alarm.RecurringTime(rule = "FREQ=WEEKLY;BYDAY=MO,WE,FR", until = now)),
         priority = Priority.HIGH,

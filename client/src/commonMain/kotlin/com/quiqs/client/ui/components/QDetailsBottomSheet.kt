@@ -71,8 +71,10 @@ import quiqsai.client.generated.resources.clock
 import quiqsai.client.generated.resources.exclamation
 import quiqsai.client.generated.resources.label
 import quiqsai.client.generated.resources.mic
+import quiqsai.client.generated.resources.mic_recording
 import quiqsai.client.generated.resources.plus
 import quiqsai.client.generated.resources.speaker
+import quiqsai.client.generated.resources.stop
 import quiqsai.client.generated.resources.x
 import kotlin.time.Instant
 
@@ -422,10 +424,14 @@ private fun VoiceNoteRecordButton(
     var longPressActive by remember { mutableStateOf(false) }
     var activeRecorder by remember { mutableStateOf<AudioRecorder?>(null) }
 
+    // Driven by `activeRecorder` — true while audio is actively being captured. Flips
+    // the label/icon to the "recording" treatment so the user can see they're being
+    // listened to, then back to the resting state on release.
+    val isRecording = activeRecorder != null
     VoiceNoteActionButton(
-        icon = Res.drawable.mic,
+        icon = if (isRecording) Res.drawable.mic_recording else Res.drawable.mic,
         iconTint = Color.White,
-        label = "hold to add voice note",
+        label = if (isRecording) "recording voice note" else "hold to add voice note",
         labelColor = Color.White,
         containerColor = Color(0xFFD85A00),
         gestureModifier = Modifier.pointerInput(Unit) {
@@ -491,9 +497,9 @@ private fun VoiceNotePlayButton(
     }
 
     VoiceNoteActionButton(
-        icon = Res.drawable.speaker,
+        icon = if (isPlaying) Res.drawable.stop else Res.drawable.speaker,
         iconTint = Color.Black,
-        label = if (isPlaying) "tap to stop" else "tap to play voice note",
+        label = if (isPlaying) "tap to stop playback" else "tap to play voice note",
         labelColor = Color(0xFF111111),
         containerColor = Color.White,
         gestureModifier = Modifier.clickable {
