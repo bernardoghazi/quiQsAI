@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -33,6 +34,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextIndent
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.quiqs.client.LocalThemeIsDark
 import com.quiqs.client.QuiqsColorScheme
@@ -91,14 +93,14 @@ fun QCard(
         border = BorderStroke(1.dp, cardOutline),
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            modifier = Modifier.padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 14.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             // Indents the first line of the title so the checkbox can overlay that
             // space and read as part of the text block; subsequent lines flow back to the
             // left edge. Indent is converted from dp so it stays at 16.dp regardless of
             // the user's font scale.
-            val titleIndent = with(LocalDensity.current) { TextIndent(firstLine = 22.dp.toSp()) }
+            val titleIndent = with(LocalDensity.current) { TextIndent(firstLine = 24.dp.toSp()) }
             val hasVoiceNote = q.voiceNotePath != null
             // When the Q has no title text but does have a voice note, show "Voice note"
             // as a stand-in primary label so the card still has something to read. If
@@ -112,7 +114,8 @@ fun QCard(
                     // don't run under it.
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(end = if (hasVoiceNote) 32.dp else 0.dp),
+                        .heightIn(28.dp, Dp.Infinity)
+                        .padding(end = if (hasVoiceNote) 32.dp else 0.dp, top = 5.dp),
                     textIndent = titleIndent,
                     maxLines = 4
                 )
@@ -121,7 +124,7 @@ fun QCard(
                     onCheckedChange = onCheckedChange,
                     modifier = Modifier
                         .align(Alignment.TopStart)
-                        .padding(top = 1.dp),
+                        .padding(top = 6.dp),
                 )
                 if (hasVoiceNote) {
                     VoiceNotePlayIcon(
@@ -242,6 +245,7 @@ private fun QCardPreview() {
         completed = false,
         createdAt = now,
         updatedAt = now,
+        voiceNotePath = "xyz"
     )
     MaterialTheme {
         CompositionLocalProvider(LocalThemeIsDark provides true) {
@@ -268,14 +272,16 @@ private fun QCardDarkPreview() {
     val sample = Q(
         id = Uuid.parse("00000000-0000-0000-0000-000000000001"),
         text = """
-            |Pick up Stella from school and bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla.
-            |""".trimMargin(),
+Pick up Stella from school and bla bla bla bla bla bla.
+Bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla.
+            """.trimMargin(),
         tags = listOf("family", "personal"),
         alarms = listOf(Alarm.RecurringTime(rule = "FREQ=WEEKLY;BYDAY=MO,WE,FR", until = now)),
         priority = Priority.HIGH,
         completed = false,
         createdAt = now,
         updatedAt = now,
+        voiceNotePath = "xyz"
     )
     CompositionLocalProvider(LocalThemeIsDark provides true) {
         val scheme = if (LocalThemeIsDark.current) QuiqsDarkColorScheme else QuiqsColorScheme
