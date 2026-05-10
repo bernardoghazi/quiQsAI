@@ -455,7 +455,7 @@ private fun VoiceNotePlayBlock(
 ) {
     VoiceNoteActionButton(
         icon = Res.drawable.speaker,
-        iconTint = Color(0xFFB8B8B8),
+        iconTint = Color.Black,
         label = "tap to play voice note",
         labelColor = Color(0xFF111111),
         containerColor = Color.White,
@@ -473,7 +473,7 @@ private fun VoiceNotePlayBlock(
 @Composable
 private fun VoiceNoteActionButton(
     icon: DrawableResource,
-    iconTint: Color,
+    iconTint: Color = Color.Black,
     label: String,
     labelColor: Color,
     containerColor: Color,
@@ -486,12 +486,13 @@ private fun VoiceNoteActionButton(
         contentAlignment = Alignment.Center,
     ) {
         Surface(
-            modifier = gestureModifier.fillMaxWidth(),
             shape = RoundedCornerShape(10.dp),
             color = containerColor,
         ) {
             Row(
-                modifier = Modifier.padding(horizontal = 22.dp, vertical = 14.dp),
+                modifier = Modifier
+                    .padding(horizontal = 22.dp, vertical = 14.dp)
+                    .widthIn(200.dp, 350.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
             ) {
@@ -504,7 +505,7 @@ private fun VoiceNoteActionButton(
                 Text(
                     text = label,
                     color = labelColor,
-                    fontSize = 16.sp,
+                    fontSize = 14.sp,
                     fontWeight = FontWeight.Medium,
                 )
             }
