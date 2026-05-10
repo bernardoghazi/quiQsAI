@@ -445,7 +445,7 @@ private fun HoldToRecordButton(
                     painter = painterResource(Res.drawable.mic),
                     contentDescription = null,
                     tint = Color.White,
-                    modifier = Modifier.size(20.dp),
+                    modifier = Modifier.size(24.dp),
                 )
                 Text(
                     text = "hold to add voice note",
@@ -468,39 +468,32 @@ private fun VoiceNotePlayBlock(
             .fillMaxWidth()
             .padding(horizontal = SHEET_SECTION_HORIZONTAL_PADDING.dp, vertical = 18.dp),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onTapPlay() },
+            shape = RoundedCornerShape(10.dp),
+            color = Color.White,
         ) {
-            Surface(
-                modifier = Modifier
-                    .weight(1f)
-                    .clickable { onTapPlay() },
-                shape = RoundedCornerShape(10.dp),
-                color = Color.White,
+            Row(
+                modifier = Modifier.padding(horizontal = 22.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 22.dp, vertical = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(14.dp),
-                ) {
-                    // Speaker icon — placeholder using the existing `wave` drawable; the real
-                    // phone-with-speaker glyph will swap in when added.
-                    Icon(
-                        painter = painterResource(Res.drawable.speaker),
-                        contentDescription = null,
-                        tint = Color(0xFFB8B8B8),
-                        modifier = Modifier.size(28.dp),
-                    )
-                    Text(
-                        text = "tap to play voice note",
-                        color = Color(0xFF111111),
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Medium,
-                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
-                    )
-                }
+                // Speaker icon — placeholder using the existing `wave` drawable; the real
+                // phone-with-speaker glyph will swap in when added.
+                Icon(
+                    painter = painterResource(Res.drawable.speaker),
+                    contentDescription = null,
+                    tint = Color(0xFFB8B8B8),
+                    modifier = Modifier.size(24.dp),
+                )
+                Text(
+                    text = "tap to play voice note",
+                    color = Color(0xFF111111),
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Medium,
+                )
             }
         }
         IconButton(
@@ -510,7 +503,7 @@ private fun VoiceNotePlayBlock(
             Icon(
                 painter = painterResource(Res.drawable.x),
                 contentDescription = "Remove voice note",
-                tint = Color.White,
+                tint = Color.Red,
                 modifier = Modifier.size(14.dp),
             )
         }
