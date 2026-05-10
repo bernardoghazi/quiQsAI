@@ -31,6 +31,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -52,8 +53,12 @@ import androidx.compose.ui.unit.sp
 import com.quiqs.client.LocalThemeIsDark
 import com.quiqs.client.QuiqsColorScheme
 import com.quiqs.client.QuiqsDarkColorScheme
+import com.quiqs.client.audio.AudioPlayer
 import com.quiqs.client.audio.AudioRecorder
+import com.quiqs.client.audio.NoPlayer
 import com.quiqs.client.audio.NoRecorder
+import com.quiqs.client.audio.PlayerProvider
+import com.quiqs.client.audio.PlayerStatus
 import com.quiqs.client.audio.RecorderProvider
 import com.quiqs.client.audio.RecorderStatus
 import com.quiqs.shared.Alarm
@@ -107,6 +112,7 @@ data class QDraft(
 fun QDetailsBottomSheet(
     initial: QDraft,
     recorderProvider: RecorderProvider,
+    playerProvider: PlayerProvider,
     onSave: (QDraft) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -126,6 +132,7 @@ fun QDetailsBottomSheet(
         QDetailsBottomSheetContent(
             initial = initial,
             recorderProvider = recorderProvider,
+            playerProvider = playerProvider,
             onSave = onSave,
         )
     }
@@ -147,6 +154,7 @@ fun QDetailsBottomSheet(
 private fun QDetailsBottomSheetContent(
     initial: QDraft,
     recorderProvider: RecorderProvider = NoRecorder,
+    playerProvider: PlayerProvider = NoPlayer,
     onSave: (QDraft) -> Unit = {},
 ) {
     // Re-mounting the sheet (dismiss → reopen) gives us fresh state, so plain `remember`
@@ -183,6 +191,7 @@ private fun QDetailsBottomSheetContent(
                 VoiceNoteButton(
                     voiceNotePath = draftVoiceNotePath,
                     recorderProvider = recorderProvider,
+                    playerProvider = playerProvider,
                     onSetVoiceNote = { draftVoiceNotePath = it },
                 )
                 if (draftVoiceNotePath != null) {
@@ -385,22 +394,24 @@ private fun SheetSection(
 private fun VoiceNoteButton(
     voiceNotePath: String?,
     recorderProvider: RecorderProvider,
+    playerProvider: PlayerProvider,
     onSetVoiceNote: (String) -> Unit,
 ) {
     if (voiceNotePath == null) {
-        HoldToRecordButton(
+        VoiceNoteRecordButton(
             recorderProvider = recorderProvider,
             onRecorded = onSetVoiceNote,
         )
     } else {
-        VoiceNotePlayBlock(
-            onTapPlay = { /* Playback wiring lands later. */ },
+        VoiceNotePlayButton(
+            voiceNotePath = voiceNotePath,
+            playerProvider = playerProvider,
         )
     }
 }
 
 @Composable
-private fun HoldToRecordButton(
+private fun VoiceNoteRecordButton(
     recorderProvider: RecorderProvider,
     onRecorded: (String) -> Unit,
 ) {
@@ -455,17 +466,62 @@ private fun HoldToRecordButton(
     )
 }
 
+/**
+ * "Tap to play" pill backed by [playerProvider]. Tapping starts playback; tapping again
+ * stops it. Also stops playback if the sheet is dismissed mid-stream so the audio
+ * doesn't continue playing into a void.
+ *
+ * Routing is the player's concern — the Android impl swaps speaker ↔ earpiece when the
+ * proximity sensor reports the phone is at the user's ear.
+ */
 @Composable
-private fun VoiceNotePlayBlock(
-    onTapPlay: () -> Unit,
+private fun VoiceNotePlayButton(
+    voiceNotePath: String,
+    playerProvider: PlayerProvider,
 ) {
+    val scope = rememberCoroutineScope()
+    var activePlayer by remember { mutableStateOf<AudioPlayer?>(null) }
+    var isPlaying by remember { mutableStateOf(false) }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            activePlayer?.stop()
+            activePlayer = null
+        }
+    }
+
     VoiceNoteActionButton(
         icon = Res.drawable.speaker,
         iconTint = Color.Black,
-        label = "tap to play voice note",
+        label = if (isPlaying) "tap to stop" else "tap to play voice note",
         labelColor = Color(0xFF111111),
         containerColor = Color.White,
-        gestureModifier = Modifier.clickable { onTapPlay() },
+        gestureModifier = Modifier.clickable {
+            if (isPlaying) {
+                activePlayer?.stop()
+                activePlayer = null
+                isPlaying = false
+            } else {
+                scope.launch {
+                    when (val s = playerProvider.get()) {
+                        is PlayerStatus.Available -> {
+                            activePlayer = s.player
+                            isPlaying = true
+                            s.player.play(voiceNotePath, onComplete = {
+                                if (activePlayer === s.player) {
+                                    activePlayer = null
+                                    isPlaying = false
+                                }
+                            })
+                        }
+                        // Player unavailable: drop the tap silently. Surfacing an error
+                        // here would need additional UI; the stub provider is only used
+                        // on platforms without playback wiring (iOS / desktop).
+                        is PlayerStatus.Unavailable -> Unit
+                    }
+                }
+            }
+        },
     )
 }
 
@@ -492,6 +548,7 @@ private fun VoiceNoteActionButton(
         contentAlignment = Alignment.Center,
     ) {
         Surface(
+            modifier = gestureModifier,
             shape = RoundedCornerShape(10.dp),
             color = containerColor,
         ) {

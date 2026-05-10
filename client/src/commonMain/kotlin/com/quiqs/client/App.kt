@@ -18,7 +18,9 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.Box
 import androidx.compose.ui.geometry.Offset
+import com.quiqs.client.audio.NoPlayer
 import com.quiqs.client.audio.NoRecorder
+import com.quiqs.client.audio.PlayerProvider
 import com.quiqs.client.audio.RecorderProvider
 import com.quiqs.client.ui.QDetailScreen
 import com.quiqs.client.ui.QListScreen
@@ -40,6 +42,7 @@ fun App(
     repository: QRepository,
     agentProvider: AgentProvider = NoAgent,
     recorderProvider: RecorderProvider = NoRecorder,
+    playerProvider: PlayerProvider = NoPlayer,
 ) {
     var route by remember { mutableStateOf<Route>(Route.List) }
     var filterSort by remember { mutableStateOf(QFilterSort()) }
@@ -55,6 +58,7 @@ fun App(
                     filterSort = filterSort,
                     agentProvider = agentProvider,
                     recorderProvider = recorderProvider,
+                    playerProvider = playerProvider,
                     onQueryQs = { route = Route.Prompt(PromptMode.Query) },
                     onFilterSortApplied = { spec -> filterSort = spec },
                     onClearFilterSort = { filterSort = QFilterSort() },

@@ -33,6 +33,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.quiqs.client.AgentProvider
+import com.quiqs.client.audio.PlayerProvider
 import com.quiqs.client.audio.RecorderProvider
 import com.quiqs.client.ui.components.QBottomBar
 import com.quiqs.client.ui.components.QCard
@@ -75,6 +76,7 @@ fun QListScreen(
     filterSort: QFilterSort,
     agentProvider: AgentProvider,
     recorderProvider: RecorderProvider,
+    playerProvider: PlayerProvider,
     onQueryQs: () -> Unit,
     onFilterSortApplied: (QFilterSort) -> Unit,
     onClearFilterSort: () -> Unit,
@@ -247,6 +249,7 @@ fun QListScreen(
         QDetailsBottomSheet(
             initial = request.initial,
             recorderProvider = recorderProvider,
+            playerProvider = playerProvider,
             onSave = request.onSave,
             onDismiss = { sheetRequest = null },
         )

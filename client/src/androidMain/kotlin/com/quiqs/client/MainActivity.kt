@@ -5,6 +5,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import com.quiqs.client.audio.createPlayerProvider
 import com.quiqs.client.audio.createRecorderProvider
 import kotlinx.coroutines.CompletableDeferred
 
@@ -50,6 +51,7 @@ class MainActivity : ComponentActivity() {
                 deferred.await()
             },
         )
-        setContent { App(repository, agentProvider, recorderProvider) }
+        val playerProvider = createPlayerProvider(context = applicationContext)
+        setContent { App(repository, agentProvider, recorderProvider, playerProvider) }
     }
 }
