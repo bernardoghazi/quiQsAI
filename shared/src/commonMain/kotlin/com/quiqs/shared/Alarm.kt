@@ -26,15 +26,34 @@ sealed interface Alarm {
     /**
      * Fires on a recurring schedule described by an iCalendar RFC 5545 RRULE.
      *
-     * @property rule RRULE string (e.g. `FREQ=WEEKLY;BYDAY=MO,WE,FR`).
+     * @property rule RRULE body — no `DTSTART`, `UNTIL`, or `COUNT` lines (those are
+     *           carried in their own sibling fields). Example: `FREQ=WEEKLY;BYDAY=MO,WE,FR`.
+     * @property dtStart Anchor for the recurrence: the first firing the user picked.
+     *           Required to give `INTERVAL` and `COUNT` a meaning. Legacy rows that
+     *           predate this field deserialize with the epoch-0 sentinel default; new
+     *           constructions must pass a real instant.
      * @property until Optional end of the recurrence window; `null` means recur forever.
+     *           Mutually exclusive with [count].
+     * @property count Optional cap on the number of firings (including the one at
+     *           [dtStart]); `null` means no cap. Mutually exclusive with [until].
      */
     @Serializable
     @SerialName("recurringTime")
     data class RecurringTime(
         val rule: String,
+        val dtStart: Instant = Instant.fromEpochMilliseconds(0),
         val until: Instant? = null,
-    ) : Alarm
+        val count: Int? = null,
+    ) : Alarm {
+        init {
+            require(until == null || count == null) {
+                "RecurringTime: 'until' and 'count' are mutually exclusive"
+            }
+            if (count != null) require(count > 0) {
+                "RecurringTime: 'count' must be > 0, was $count"
+            }
+        }
+    }
 
     /**
      * Fires when the device enters a circular region around a geographic point.

@@ -139,7 +139,12 @@ fun QDetailScreen(
 /** Verbose, debug-friendly alarm description (shown as a bullet in the Alarms section). */
 private fun Alarm.describe(): String = when (this) {
     is Alarm.OneOffTime -> "One-off @ ${at.toLocalDisplay()} (raw: $at)"
-    is Alarm.RecurringTime -> "Recurring: $rule" + (until?.let { ", until ${it.toLocalDisplay()}" } ?: "")
+    is Alarm.RecurringTime -> buildString {
+        append("Recurring: $rule")
+        append(", from ${dtStart.toLocalDisplay()}")
+        until?.let { append(", until ${it.toLocalDisplay()}") }
+        count?.let { append(", count $it") }
+    }
     is Alarm.Geofence -> "Geofence ${latitude}, ${longitude} (${radiusMeters}m)"
 }
 

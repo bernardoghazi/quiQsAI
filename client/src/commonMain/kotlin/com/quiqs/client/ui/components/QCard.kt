@@ -276,7 +276,7 @@ Pick up Stella from school and bla bla bla bla bla bla.
 Bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla bla.
             """.trimMargin(),
         tags = listOf("family", "personal"),
-        alarms = listOf(Alarm.RecurringTime(rule = "FREQ=WEEKLY;BYDAY=MO,WE,FR", until = now)),
+        alarms = listOf(Alarm.RecurringTime(rule = "FREQ=WEEKLY;BYDAY=MO,WE,FR", dtStart = now, until = now)),
         priority = Priority.HIGH,
         completed = false,
         createdAt = now,
