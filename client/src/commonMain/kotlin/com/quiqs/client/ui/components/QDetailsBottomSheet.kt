@@ -1,5 +1,6 @@
 package com.quiqs.client.ui.components
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -167,7 +168,12 @@ private fun QDetailsBottomSheetContent(
     // is fine — no need to key on `initial`.
     var draftText by remember { mutableStateOf(initial.text) }
     var draftVoiceNotePath by remember { mutableStateOf(initial.voiceNotePath) }
+    var draftAlarms by remember { mutableStateOf(initial.alarms) }
     var draftPriority by remember { mutableStateOf(initial.priority) }
+    // Drives the sheet's internal nav: the main draft form vs. the alarm builder
+    // overlay. Driven by the clock action on the main draft and by tapping an
+    // existing alarm pill (which pre-fills the builder).
+    var sheetScreen by remember { mutableStateOf<SheetScreen>(SheetScreen.MainDraft) }
     // Single picker anchored to the section-4 exclamation icon. The section-3
     // priority pill opens the same menu (so the popup appears above the icon),
     // which keeps the entry points consistent and avoids a second anchor.
@@ -178,10 +184,20 @@ private fun QDetailsBottomSheetContent(
     }
 
     Box(modifier = Modifier.fillMaxWidth()) {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
+    AnimatedContent(targetState = sheetScreen, label = "sheet-screen") { current ->
+        when (current) {
+            is SheetScreen.AlarmBuilder -> AlarmBuilder(
+                editing = current.editing,
+                onCancel = { sheetScreen = SheetScreen.MainDraft },
+                onAlarmChosen = { alarm ->
+                    draftAlarms = listOf(alarm)
+                    sheetScreen = SheetScreen.MainDraft
+                },
+            )
+            SheetScreen.MainDraft -> Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
         // Section 1 — editable title.
         SheetSection(
             shape = RoundedCornerShape(
@@ -235,7 +251,7 @@ private fun QDetailsBottomSheetContent(
             Priority.LOW -> QBadgeTone.Low
             Priority.MEDIUM -> null
         }
-        val showSection3 = initial.alarms.isNotEmpty() ||
+        val showSection3 = draftAlarms.isNotEmpty() ||
                 priorityTone != null ||
                 initial.tags.isNotEmpty()
         if (showSection3) {
@@ -244,8 +260,12 @@ private fun QDetailsBottomSheetContent(
                     modifier = Modifier.padding(horizontal = SHEET_SECTION_HORIZONTAL_PADDING.dp, vertical = 18.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    initial.alarms.firstOrNull()?.let { alarm ->
-                        AlarmPill(alarm = alarm, onDismiss = {})
+                    draftAlarms.firstOrNull()?.let { alarm ->
+                        AlarmPill(
+                            alarm = alarm,
+                            onClick = { sheetScreen = SheetScreen.AlarmBuilder(editing = alarm) },
+                            onDismiss = { draftAlarms = emptyList() },
+                        )
                     }
                     val hasPills = priorityTone != null || initial.tags.isNotEmpty()
                     if (hasPills) {
@@ -295,10 +315,12 @@ private fun QDetailsBottomSheetContent(
                         modifier = Modifier.size(20.dp),
                     )
                 }
-                IconButton(onClick = {}) {
+                IconButton(onClick = {
+                    sheetScreen = SheetScreen.AlarmBuilder(editing = draftAlarms.firstOrNull())
+                }) {
                     Icon(
                         painter = painterResource(Res.drawable.clock),
-                        contentDescription = null,
+                        contentDescription = "Set alarm",
                         tint = Color(0xFFEDEDED),
                         modifier = Modifier.size(20.dp),
                     )
@@ -344,6 +366,7 @@ private fun QDetailsBottomSheetContent(
                             initial.copy(
                                 text = draftText.trim(),
                                 voiceNotePath = draftVoiceNotePath,
+                                alarms = draftAlarms,
                                 priority = draftPriority,
                             )
                         )
@@ -356,6 +379,8 @@ private fun QDetailsBottomSheetContent(
                         fontWeight = FontWeight.ExtraBold,
                     )
                 }
+            }
+        }
             }
         }
     }
@@ -639,12 +664,14 @@ private fun VoiceNoteActionButton(
 @Composable
 private fun AlarmPill(
     alarm: Alarm,
+    onClick: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     Row(
         modifier = Modifier
             .clip(RoundedCornerShape(20))
             .background(Color(0xFF161616))
+            .clickable { onClick() }
             .padding(horizontal = 12.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -762,6 +789,212 @@ private fun pillColors(tone: QBadgeTone): PillColors = when (tone) {
     QBadgeTone.Neutral -> PillColors(bg = Color(0xFF161616), fg = Color(0xFF666666))
     QBadgeTone.High -> PillColors(bg = Color(0xFF200C0C), fg = Color(0xFFA34949))
     QBadgeTone.Low -> PillColors(bg = Color(0xFFF1F4F8), fg = Color(0xFF8893A1))
+}
+
+/**
+ * Internal-navigation state for the bottom sheet. The sheet stays a single
+ * [ModalBottomSheet]; tapping the clock action or an existing alarm pill swaps
+ * the body to the alarm builder via [AnimatedContent]. Each [AlarmBuilder] entry
+ * carries the alarm being edited (or `null` for a fresh add), so the future
+ * forms can pre-fill themselves.
+ */
+private sealed class SheetScreen {
+    data object MainDraft : SheetScreen()
+    data class AlarmBuilder(val editing: Alarm?) : SheetScreen()
+}
+
+private enum class AlarmBuilderStep {
+    PickType, FormOneTime, FormInterval, FormCalendar,
+}
+
+/**
+ * Multi-step alarm builder rendered as a replacement for the main draft body.
+ * Step 1 is the type picker; each option transitions to its own form step
+ * (placeholders for now). [onCancel] returns control to the main draft;
+ * [onAlarmChosen] is reserved for the forms — currently unused.
+ */
+@Composable
+private fun AlarmBuilder(
+    editing: Alarm?,
+    onCancel: () -> Unit,
+    @Suppress("UNUSED_PARAMETER") onAlarmChosen: (Alarm) -> Unit,
+) {
+    var step by remember { mutableStateOf(AlarmBuilderStep.PickType) }
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        AnimatedContent(targetState = step, label = "alarm-builder-step") { current ->
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                when (current) {
+                    AlarmBuilderStep.PickType -> AlarmTypePicker(
+                        editing = editing,
+                        onBack = onCancel,
+                        onPickOneTime = { step = AlarmBuilderStep.FormOneTime },
+                        onPickInterval = { step = AlarmBuilderStep.FormInterval },
+                        onPickCalendar = { step = AlarmBuilderStep.FormCalendar },
+                    )
+                    AlarmBuilderStep.FormOneTime -> ComingSoonForm(
+                        title = "One-time",
+                        onBack = { step = AlarmBuilderStep.PickType },
+                    )
+                    AlarmBuilderStep.FormInterval -> ComingSoonForm(
+                        title = "Interval",
+                        onBack = { step = AlarmBuilderStep.PickType },
+                    )
+                    AlarmBuilderStep.FormCalendar -> ComingSoonForm(
+                        title = "Calendar",
+                        onBack = { step = AlarmBuilderStep.PickType },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AlarmTypePicker(
+    editing: Alarm?,
+    onBack: () -> Unit,
+    onPickOneTime: () -> Unit,
+    onPickInterval: () -> Unit,
+    onPickCalendar: () -> Unit,
+) {
+    SheetSection(
+        shape = RoundedCornerShape(
+            topStart = 14.dp,
+            topEnd = 14.dp,
+            bottomStart = 4.dp,
+            bottomEnd = 4.dp,
+        ),
+    ) {
+        BuilderHeader(
+            title = if (editing == null) "Add alarm" else "Edit alarm",
+            onBack = onBack,
+        )
+    }
+    SheetSection(
+        shape = RoundedCornerShape(
+            topStart = 4.dp,
+            topEnd = 4.dp,
+            bottomStart = 14.dp,
+            bottomEnd = 14.dp,
+        ),
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            BuilderOptionRow(
+                title = "One-time",
+                description = "Fires once at a specific date and time.",
+                onClick = onPickOneTime,
+            )
+            BuilderOptionRow(
+                title = "Interval",
+                description = "Repeat every N minutes or hours within a daily window.",
+                onClick = onPickInterval,
+            )
+            BuilderOptionRow(
+                title = "Calendar",
+                description = "Repeat daily, weekly, monthly, or yearly.",
+                onClick = onPickCalendar,
+            )
+        }
+    }
+}
+
+@Composable
+private fun BuilderHeader(
+    title: String,
+    onBack: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = SHEET_SECTION_HORIZONTAL_PADDING.dp - 6.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconButton(onClick = onBack) {
+            Icon(
+                painter = painterResource(Res.drawable.x),
+                contentDescription = "Back",
+                tint = Color(0xFFEDEDED),
+                modifier = Modifier.size(14.dp),
+            )
+        }
+        Spacer(modifier = Modifier.width(4.dp))
+        Text(
+            text = title,
+            color = Color(0xFFEDEDED),
+            fontSize = 14.sp,
+            fontWeight = FontWeight.SemiBold,
+        )
+    }
+}
+
+@Composable
+private fun BuilderOptionRow(
+    title: String,
+    description: String,
+    onClick: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+            .padding(horizontal = SHEET_SECTION_HORIZONTAL_PADDING.dp, vertical = 14.dp),
+    ) {
+        Text(
+            text = title,
+            color = Color(0xFFEDEDED),
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Medium,
+        )
+        Spacer(modifier = Modifier.width(2.dp))
+        Text(
+            text = description,
+            color = Color(0xFFB8B8B8),
+            fontSize = 12.sp,
+        )
+    }
+}
+
+@Composable
+private fun ComingSoonForm(
+    title: String,
+    onBack: () -> Unit,
+) {
+    SheetSection(
+        shape = RoundedCornerShape(
+            topStart = 14.dp,
+            topEnd = 14.dp,
+            bottomStart = 4.dp,
+            bottomEnd = 4.dp,
+        ),
+    ) {
+        BuilderHeader(title = title, onBack = onBack)
+    }
+    SheetSection(
+        shape = RoundedCornerShape(
+            topStart = 4.dp,
+            topEnd = 4.dp,
+            bottomStart = 14.dp,
+            bottomEnd = 14.dp,
+        ),
+    ) {
+        Box(
+            modifier = Modifier.fillMaxWidth().padding(32.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = "Form coming next",
+                color = Color(0xFF888888),
+                fontSize = 13.sp,
+                fontStyle = FontStyle.Italic,
+            )
+        }
+    }
 }
 
 private fun previewSeededDraft(): QDraft {
