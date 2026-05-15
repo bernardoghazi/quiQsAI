@@ -58,7 +58,7 @@ fun Alarm.formatLabel(): String = when (this) {
     is Alarm.OneOffTime -> formatRelativeDateTime(at)
     is Alarm.RecurringTime -> {
         val tz = TimeZone.currentSystemDefault()
-        val next = nextRecurringInstant(rule, Clock.System.now(), tz)
+        val next = nextRecurringInstant(this, Clock.System.now(), tz)
         if (next != null) formatRelativeDateTime(next) else rule
     }
 

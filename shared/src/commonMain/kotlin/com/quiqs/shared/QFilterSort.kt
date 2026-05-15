@@ -156,7 +156,7 @@ private fun Q.nextAlarmInstant(now: Instant, tz: TimeZone): Instant? =
     alarms.mapNotNull { a ->
         when (a) {
             is Alarm.OneOffTime -> a.at.takeIf { it > now }
-            is Alarm.RecurringTime -> nextRecurringInstant(a.rule, now, tz)
+            is Alarm.RecurringTime -> nextRecurringInstant(a, now, tz)
             is Alarm.Geofence -> null
         }
     }.minOrNull()
