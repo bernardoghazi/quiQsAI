@@ -28,10 +28,8 @@ sealed interface Alarm {
      *
      * @property rule RRULE body — no `DTSTART`, `UNTIL`, or `COUNT` lines (those are
      *           carried in their own sibling fields). Example: `FREQ=WEEKLY;BYDAY=MO,WE,FR`.
-     * @property dtStart Anchor for the recurrence: the first firing the user picked.
-     *           Required to give `INTERVAL` and `COUNT` a meaning. Legacy rows that
-     *           predate this field deserialize with the epoch-0 sentinel default; new
-     *           constructions must pass a real instant.
+     * @property dtStart Anchor for the recurrence: the first firing of the rule. Required
+     *           to give `INTERVAL` and `COUNT` a meaning.
      * @property until Optional end of the recurrence window; `null` means recur forever.
      *           Mutually exclusive with [count].
      * @property count Optional cap on the number of firings (including the one at
@@ -41,7 +39,7 @@ sealed interface Alarm {
     @SerialName("recurringTime")
     data class RecurringTime(
         val rule: String,
-        val dtStart: Instant = Instant.fromEpochMilliseconds(0),
+        val dtStart: Instant,
         val until: Instant? = null,
         val count: Int? = null,
     ) : Alarm {

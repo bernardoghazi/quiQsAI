@@ -127,12 +127,33 @@ class LlmPromptBuilder(
         private val ALARMS_AND_TIME_RULES = """
             Alarms:
               {"type":"oneOffTime","at":"<iso8601>"}
-              {"type":"recurringTime","rule":"<RRULE>","until":"<iso8601|null>"}
+              {"type":"recurringTime","rule":"<RRULE>","dtStart":"<iso8601>","until":"<iso8601|null>","count":<int|null>}
               {"type":"geofence","latitude":<num>,"longitude":<num>,"radiusMeters":<num>,"activeUntil":"<iso8601|null>"}
 
-            Rules:
+            Time rules:
             - Resolve relative times with the given now+tz.
-            - Emit "at" in the given tz as ISO-8601 with offset, not UTC. Example: user says "5pm" with offset 03:00 → "17:00:00-03:00".
+            - Emit instants in the given tz as ISO-8601 with offset, not UTC. Example: "5pm" with offset 03:00 → "17:00:00-03:00".
+
+            Recurring alarm rules:
+            - `dtStart` is REQUIRED — the first firing of the rule. The rule expands from there.
+            - `until` and `count` are mutually exclusive: set at most one. Both null means recur forever.
+            - The `rule` is the RRULE body only. Do NOT put DTSTART, UNTIL, or COUNT inside it.
+            - Supported RRULE parts: FREQ (MINUTELY|HOURLY|DAILY|WEEKLY|MONTHLY|YEARLY),
+              INTERVAL, BYDAY (MO/TU/WE/TH/FR/SA/SU; for MONTHLY/YEARLY a leading int picks
+              the Nth weekday, e.g. `2SU`=2nd Sunday, `-1FR`=last Friday), BYMONTH,
+              BYMONTHDAY, BYHOUR, BYMINUTE. If BYHOUR/BYMINUTE are omitted, occurrences fire
+              at dtStart's local hour:minute.
+
+            Recurring rule examples (omit dtStart/until/count from the rule itself):
+              "every 90 min from 8am to 10pm on weekdays" →
+                rule "FREQ=MINUTELY;INTERVAL=90;BYHOUR=8,9,10,11,12,13,14,15,16,17,18,19,20,21;BYDAY=MO,TU,WE,TH,FR"
+              "every 3 hours from 8am to 10pm" →
+                rule "FREQ=HOURLY;INTERVAL=3;BYHOUR=8,9,10,11,12,13,14,15,16,17,18,19,20,21"
+              "every other week on Mon/Wed/Fri" → rule "FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,WE,FR"
+              "the 15th of every 2 months"      → rule "FREQ=MONTHLY;INTERVAL=2;BYMONTHDAY=15"
+              "second Sunday every 2 months"    → rule "FREQ=MONTHLY;INTERVAL=2;BYDAY=2SU"
+              "Nov 20 every 2 years"            → rule "FREQ=YEARLY;INTERVAL=2;BYMONTH=11;BYMONTHDAY=20"
+              "daily, ending after 10 times"    → rule "FREQ=DAILY", count 10
         """.trimIndent()
 
         private val PRIORITY_RULES = """
@@ -238,7 +259,9 @@ class LlmPromptBuilder(
 
               "Urgent: call the doctor"
               → {"type":"create","text":"Call the doctor","tags":[],"alarms":[],"priority":"high"}
-              → {"type":"create","text":"Call the doctor","tags":[],"alarms":[],"priority":"high"}
+
+              "Remind me to drink water every 2 hours from 8am to 8pm on weekdays"
+              → {"type":"create","text":"Drink water","tags":[],"alarms":[{"type":"recurringTime","rule":"FREQ=HOURLY;INTERVAL=2;BYHOUR=8,9,10,11,12,13,14,15,16,17,18,19,20;BYDAY=MO,TU,WE,TH,FR","dtStart":"<resolved>","until":null,"count":null}],"priority":"medium"}
 
               "show only high priority"
               → {"type":"filterSort","spec":{"priorities":["high"]}}
