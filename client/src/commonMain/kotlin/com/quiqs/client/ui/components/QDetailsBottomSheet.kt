@@ -1053,49 +1053,26 @@ private fun OneTimeForm(
     }
 
     if (datePickerOpen) {
-        // Material's DatePickerState anchors on UTC midnight, so we seed with that
-        // and read back the same way to keep the calendar date stable regardless of
-        // the user's local zone.
-        val datePickerState = rememberDatePickerState(
-            initialSelectedDateMillis = date.atTime(0, 0).toInstant(TimeZone.UTC).toEpochMilliseconds(),
+        DatePickerOverlay(
+            initial = date,
+            onDismiss = { datePickerOpen = false },
+            onConfirm = { picked ->
+                date = picked
+                datePickerOpen = false
+            },
         )
-        DatePickerDialog(
-            onDismissRequest = { datePickerOpen = false },
-            confirmButton = {
-                TextButton(onClick = {
-                    datePickerState.selectedDateMillis?.let { ms ->
-                        date = Instant.fromEpochMilliseconds(ms).toLocalDateTime(TimeZone.UTC).date
-                    }
-                    datePickerOpen = false
-                }) { Text("OK") }
-            },
-            dismissButton = {
-                TextButton(onClick = { datePickerOpen = false }) { Text("Cancel") }
-            },
-        ) {
-            DatePicker(state = datePickerState)
-        }
     }
 
     if (timePickerOpen) {
-        val timePickerState = rememberTimePickerState(
+        TimePickerOverlay(
             initialHour = hour,
             initialMinute = minute,
-            is24Hour = false,
-        )
-        AlertDialog(
-            onDismissRequest = { timePickerOpen = false },
-            confirmButton = {
-                TextButton(onClick = {
-                    hour = timePickerState.hour
-                    minute = timePickerState.minute
-                    timePickerOpen = false
-                }) { Text("OK") }
+            onDismiss = { timePickerOpen = false },
+            onConfirm = { h, m ->
+                hour = h
+                minute = m
+                timePickerOpen = false
             },
-            dismissButton = {
-                TextButton(onClick = { timePickerOpen = false }) { Text("Cancel") }
-            },
-            text = { TimePicker(state = timePickerState) },
         )
     }
 }
@@ -1184,10 +1161,10 @@ private fun monthShort(month: Month): String = when (month) {
 }
 
 /**
- * Form for an "interval" recurring alarm: fire every N minutes or hours within a
- * daily hour window, on selected weekdays. Compiles to
- * `FREQ=MINUTELY|HOURLY;INTERVAL=N;BYHOUR=..;BYDAY=..` with [Alarm.RecurringTime.dtStart]
- * set to the first weekday-matching window start at or after "now".
+ * Form for an "interval" recurring alarm: fire every N minutes or hours, optionally
+ * restricted to specific weekdays. Compiles to
+ * `FREQ=MINUTELY|HOURLY;INTERVAL=N;BYDAY=..` with [Alarm.RecurringTime.dtStart] anchored
+ * to the current minute — subsequent firings step `INTERVAL` units from there.
  *
  * Pre-fills from [editing] when it is a [Alarm.RecurringTime] whose rule has
  * `FREQ=MINUTELY` or `FREQ=HOURLY`; otherwise the form opens at its defaults
@@ -1202,17 +1179,19 @@ private fun IntervalForm(
 ) {
     val tz = TimeZone.currentSystemDefault()
     val seed = (editing as? Alarm.RecurringTime)?.let { parseIntervalAlarm(it, tz) }
+    val seedStartLocal = (seed?.dtStart ?: defaultDtStart(tz)).toLocalDateTime(tz)
     var unit by remember { mutableStateOf(seed?.unit ?: IntervalUnit.MINUTES) }
     var value by remember { mutableStateOf(seed?.value ?: 30) }
-    var windowStartHour by remember { mutableStateOf(seed?.windowStartHour ?: 9) }
-    var windowEndHour by remember { mutableStateOf(seed?.windowEndHour ?: 21) }
     var weekdays by remember {
         mutableStateOf<Set<DayOfWeek>>(seed?.weekdays ?: WEEKDAYS_ORDERED.toSet())
     }
+    var dtStartDate by remember { mutableStateOf(seedStartLocal.date) }
+    var dtStartHour by remember { mutableStateOf(seedStartLocal.hour) }
+    var dtStartMinute by remember { mutableStateOf(seedStartLocal.minute) }
     var end by remember { mutableStateOf<EndChoice>(seed?.end ?: EndChoice.Never) }
 
-    var startHourPickerOpen by remember { mutableStateOf(false) }
-    var endHourPickerOpen by remember { mutableStateOf(false) }
+    var dtStartDatePickerOpen by remember { mutableStateOf(false) }
+    var dtStartTimePickerOpen by remember { mutableStateOf(false) }
     var untilDatePickerOpen by remember { mutableStateOf(false) }
 
     // Always include the current value so a pre-filled "custom" interval (e.g. 7 min
@@ -1222,7 +1201,7 @@ private fun IntervalForm(
         val base = if (unit == IntervalUnit.MINUTES) MINUTE_OPTIONS else HOUR_OPTIONS
         if (value in base) base else (base + value).sorted()
     }
-    val canSave = weekdays.isNotEmpty() && windowEndHour >= windowStartHour && value >= 1
+    val canSave = weekdays.isNotEmpty() && value >= 1
 
     SheetSection(
         shape = RoundedCornerShape(
@@ -1269,16 +1248,22 @@ private fun IntervalForm(
                 }
             }
 
-            // Between
+            // Starting
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                FormFieldLabel("Between")
+                FormFieldLabel("Starting")
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    HourCell(windowStartHour) { startHourPickerOpen = true }
-                    Text("and", color = Color(0xFFB8B8B8), fontSize = 13.sp)
-                    HourCell(windowEndHour) { endHourPickerOpen = true }
+                    StartingCell(
+                        text = formatDateLabel(dtStartDate, tz),
+                        modifier = Modifier.weight(1f),
+                        onClick = { dtStartDatePickerOpen = true },
+                    )
+                    StartingCell(
+                        text = formatTimeLabel(dtStartHour, dtStartMinute),
+                        onClick = { dtStartTimePickerOpen = true },
+                    )
                 }
             }
 
@@ -1317,9 +1302,8 @@ private fun IntervalForm(
             TextButton(
                 enabled = canSave,
                 onClick = {
-                    val nowLocal = Clock.System.now().toLocalDateTime(tz)
-                    val dtStart = computeIntervalDtStart(nowLocal, weekdays, windowStartHour, tz)
-                    val rule = buildIntervalRule(value, unit, windowStartHour, windowEndHour, weekdays)
+                    val dtStart = dtStartDate.atTime(dtStartHour, dtStartMinute).toInstant(tz)
+                    val rule = buildIntervalRule(value, unit, weekdays)
                     val until = (end as? EndChoice.OnDate)?.date
                         ?.atTime(23, 59)
                         ?.toInstant(tz)
@@ -1343,23 +1327,25 @@ private fun IntervalForm(
         }
     }
 
-    if (startHourPickerOpen) {
-        HourPickerDialog(
-            initialHour = windowStartHour,
-            onDismiss = { startHourPickerOpen = false },
+    if (dtStartDatePickerOpen) {
+        DatePickerOverlay(
+            initial = dtStartDate,
+            onDismiss = { dtStartDatePickerOpen = false },
             onConfirm = { picked ->
-                windowStartHour = picked
-                startHourPickerOpen = false
+                dtStartDate = picked
+                dtStartDatePickerOpen = false
             },
         )
     }
-    if (endHourPickerOpen) {
-        HourPickerDialog(
-            initialHour = windowEndHour,
-            onDismiss = { endHourPickerOpen = false },
-            onConfirm = { picked ->
-                windowEndHour = picked
-                endHourPickerOpen = false
+    if (dtStartTimePickerOpen) {
+        TimePickerOverlay(
+            initialHour = dtStartHour,
+            initialMinute = dtStartMinute,
+            onDismiss = { dtStartTimePickerOpen = false },
+            onConfirm = { h, m ->
+                dtStartHour = h
+                dtStartMinute = m
+                dtStartTimePickerOpen = false
             },
         )
     }
@@ -1429,16 +1415,20 @@ private fun WeekdayChips(
 }
 
 @Composable
-private fun HourCell(hour: Int, onClick: () -> Unit) {
+private fun StartingCell(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     Box(
-        modifier = Modifier
+        modifier = modifier
             .clip(RoundedCornerShape(10.dp))
             .background(Color(0xFF161616))
             .clickable { onClick() }
             .padding(horizontal = 14.dp, vertical = 10.dp),
     ) {
         Text(
-            text = formatHourLabel(hour),
+            text = text,
             color = Color(0xFFEDEDED),
             fontSize = 14.sp,
             fontWeight = FontWeight.Medium,
@@ -1600,27 +1590,23 @@ private fun FormFieldLabel(text: String) {
     )
 }
 
-/**
- * Shared TimePicker-in-AlertDialog used by the interval form's window pickers. We
- * ask the user for an hour:minute but only consume the hour — interval windows are
- * hour-granular by design (BYHOUR filters at hour resolution).
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun HourPickerDialog(
+private fun TimePickerOverlay(
     initialHour: Int,
+    initialMinute: Int,
     onDismiss: () -> Unit,
-    onConfirm: (Int) -> Unit,
+    onConfirm: (hour: Int, minute: Int) -> Unit,
 ) {
     val state = rememberTimePickerState(
         initialHour = initialHour,
-        initialMinute = 0,
+        initialMinute = initialMinute,
         is24Hour = false,
     )
     AlertDialog(
         onDismissRequest = onDismiss,
         confirmButton = {
-            TextButton(onClick = { onConfirm(state.hour) }) { Text("OK") }
+            TextButton(onClick = { onConfirm(state.hour, state.minute) }) { Text("OK") }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Cancel") }
@@ -1654,39 +1640,12 @@ private fun DatePickerOverlay(
     }
 }
 
-/**
- * First firing for an interval rule: the next selected weekday whose [windowStartHour]
- * is still ahead of [nowLocal]. Defaults to "today at windowStart" if today qualifies
- * and we haven't passed the window start; otherwise advances day-by-day.
- */
-private fun computeIntervalDtStart(
-    nowLocal: LocalDateTime,
-    weekdays: Set<DayOfWeek>,
-    windowStartHour: Int,
-    tz: TimeZone,
-): Instant {
-    val days = weekdays.ifEmpty { WEEKDAYS_ORDERED.toSet() }
-    val windowStartToday = nowLocal.date.atTime(windowStartHour, 0)
-    if (nowLocal.dayOfWeek in days && nowLocal < windowStartToday) {
-        return windowStartToday.toInstant(tz)
-    }
-    var d = nowLocal.date.plus(1, DateTimeUnit.DAY)
-    repeat(7) {
-        if (d.dayOfWeek in days) {
-            return d.atTime(windowStartHour, 0).toInstant(tz)
-        }
-        d = d.plus(1, DateTimeUnit.DAY)
-    }
-    return windowStartToday.toInstant(tz)
-}
-
 private data class IntervalFormDefaults(
     val unit: IntervalUnit,
     val value: Int,
-    val windowStartHour: Int,
-    val windowEndHour: Int,
     val weekdays: Set<DayOfWeek>,
     val end: EndChoice,
+    val dtStart: Instant,
 )
 
 /**
@@ -1712,9 +1671,6 @@ private fun parseIntervalAlarm(alarm: Alarm.RecurringTime, tz: TimeZone): Interv
         else -> return null
     }
     val value = parts["INTERVAL"]?.toIntOrNull()?.coerceAtLeast(1) ?: 1
-    val byHour = parts["BYHOUR"]?.split(',')?.mapNotNull { it.toIntOrNull() }
-    val windowStartHour = byHour?.minOrNull() ?: 9
-    val windowEndHour = byHour?.maxOrNull() ?: 21
     val weekdays = parts["BYDAY"]
         ?.split(',')
         ?.mapNotNull { it.toDayOfWeekIgnoringOrdinal() }
@@ -1727,7 +1683,7 @@ private fun parseIntervalAlarm(alarm: Alarm.RecurringTime, tz: TimeZone): Interv
         until != null -> EndChoice.OnDate(until.toLocalDateTime(tz).date)
         else -> EndChoice.Never
     }
-    return IntervalFormDefaults(unit, value, windowStartHour, windowEndHour, weekdays, end)
+    return IntervalFormDefaults(unit, value, weekdays, end, alarm.dtStart)
 }
 
 private fun String.toDayOfWeekIgnoringOrdinal(): DayOfWeek? {
@@ -1748,17 +1704,11 @@ private fun String.toDayOfWeekIgnoringOrdinal(): DayOfWeek? {
 private fun buildIntervalRule(
     value: Int,
     unit: IntervalUnit,
-    windowStartHour: Int,
-    windowEndHour: Int,
     weekdays: Set<DayOfWeek>,
 ): String {
     val freq = if (unit == IntervalUnit.MINUTES) "MINUTELY" else "HOURLY"
     return buildString {
         append("FREQ=$freq;INTERVAL=$value")
-        if (windowEndHour >= windowStartHour) {
-            val hours = (windowStartHour..windowEndHour).joinToString(",")
-            append(";BYHOUR=$hours")
-        }
         if (weekdays.isNotEmpty() && weekdays.size < 7) {
             val days = weekdays
                 .sortedBy { it.isoDayNumber }
@@ -1781,10 +1731,9 @@ private fun DayOfWeek.rruleCode(): String = when (this) {
 private fun defaultUntilDate(tz: TimeZone): LocalDate =
     Clock.System.now().toLocalDateTime(tz).date.plus(30, DateTimeUnit.DAY)
 
-private fun formatHourLabel(hour: Int): String {
-    val h12 = ((hour + 11) % 12) + 1
-    val suffix = if (hour < 12) "AM" else "PM"
-    return "${h12.toString().padStart(2, '0')}:00 $suffix"
+private fun defaultDtStart(tz: TimeZone): Instant {
+    val nowLocal = Clock.System.now().toLocalDateTime(tz)
+    return nowLocal.date.atTime(nowLocal.hour, nowLocal.minute).toInstant(tz)
 }
 
 @Composable
