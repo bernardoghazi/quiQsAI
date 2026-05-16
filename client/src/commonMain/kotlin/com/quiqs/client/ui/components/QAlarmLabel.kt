@@ -36,11 +36,13 @@ fun QAlarmLabel(
     color: Color = Color(0XFFB8B8B8),
 ) {
     // Wall-clock isn't observable state, so the label would otherwise be stale until
-    // the next external recomposition. Ticks on a short interval to update the
-    // 'next occurence' label.
+    // the next external recomposition. Sleep until the next `xx:xx:00` boundary so all
+    // labels re-evaluate exactly when the displayed minute flips — no drift, no 60s lag.
     val now by produceState(initialValue = Clock.System.now()) {
         while (true) {
-            delay(15_000)
+            val current = Clock.System.now()
+            val msIntoMinute = current.toEpochMilliseconds() % 60_000
+            delay(60_000 - msIntoMinute)
             value = Clock.System.now()
         }
     }
