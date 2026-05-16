@@ -4,6 +4,8 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -57,6 +59,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
@@ -90,12 +93,16 @@ import quiqsai.client.generated.resources.x
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Instant
+import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.DayOfWeek
 import kotlinx.datetime.LocalDate
+import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.Month
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.atTime
 import kotlinx.datetime.daysUntil
+import kotlinx.datetime.isoDayNumber
+import kotlinx.datetime.plus
 import kotlinx.datetime.toInstant
 import kotlinx.datetime.toLocalDateTime
 
@@ -858,9 +865,10 @@ private fun AlarmBuilder(
                         onBack = { step = AlarmBuilderStep.PickType },
                         onConfirm = onAlarmChosen,
                     )
-                    AlarmBuilderStep.FormInterval -> ComingSoonForm(
-                        title = "Interval",
+                    AlarmBuilderStep.FormInterval -> IntervalForm(
+                        editing = editing,
                         onBack = { step = AlarmBuilderStep.PickType },
+                        onConfirm = onAlarmChosen,
                     )
                     AlarmBuilderStep.FormCalendar -> ComingSoonForm(
                         title = "Calendar",
@@ -1173,6 +1181,536 @@ private fun monthShort(month: Month): String = when (month) {
     Month.OCTOBER -> "Oct"
     Month.NOVEMBER -> "Nov"
     Month.DECEMBER -> "Dec"
+}
+
+/**
+ * Form for an "interval" recurring alarm: fire every N minutes or hours within a
+ * daily hour window, on selected weekdays. Compiles to
+ * `FREQ=MINUTELY|HOURLY;INTERVAL=N;BYHOUR=..;BYDAY=..` with [Alarm.RecurringTime.dtStart]
+ * set to the first weekday-matching window start at or after "now".
+ *
+ * Editing an existing recurring alarm is not yet pre-filled — the form opens at its
+ * defaults regardless of [editing]. A future pass can parse the rule back into form
+ * state.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun IntervalForm(
+    @Suppress("UNUSED_PARAMETER") editing: Alarm?,
+    onBack: () -> Unit,
+    onConfirm: (Alarm.RecurringTime) -> Unit,
+) {
+    val tz = TimeZone.currentSystemDefault()
+    var unit by remember { mutableStateOf(IntervalUnit.MINUTES) }
+    var value by remember { mutableStateOf(30) }
+    var windowStartHour by remember { mutableStateOf(9) }
+    var windowEndHour by remember { mutableStateOf(21) }
+    var weekdays by remember { mutableStateOf<Set<DayOfWeek>>(WEEKDAYS_ORDERED.toSet()) }
+    var end by remember { mutableStateOf<EndChoice>(EndChoice.Never) }
+
+    var startHourPickerOpen by remember { mutableStateOf(false) }
+    var endHourPickerOpen by remember { mutableStateOf(false) }
+    var untilDatePickerOpen by remember { mutableStateOf(false) }
+
+    val valueOptions = if (unit == IntervalUnit.MINUTES) MINUTE_OPTIONS else HOUR_OPTIONS
+    val canSave = weekdays.isNotEmpty() && windowEndHour >= windowStartHour && value >= 1
+
+    SheetSection(
+        shape = RoundedCornerShape(
+            topStart = 14.dp,
+            topEnd = 14.dp,
+            bottomStart = 4.dp,
+            bottomEnd = 4.dp,
+        ),
+    ) {
+        BuilderHeader(title = "Interval alarm", onBack = onBack)
+    }
+    SheetSection(shape = RoundedCornerShape(4.dp)) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = SHEET_SECTION_HORIZONTAL_PADDING.dp, vertical = 18.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
+        ) {
+            // Every
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                FormFieldLabel("Every")
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    ToggleChip("minutes", unit == IntervalUnit.MINUTES) {
+                        if (unit != IntervalUnit.MINUTES) {
+                            unit = IntervalUnit.MINUTES
+                            value = 30
+                        }
+                    }
+                    ToggleChip("hours", unit == IntervalUnit.HOURS) {
+                        if (unit != IntervalUnit.HOURS) {
+                            unit = IntervalUnit.HOURS
+                            value = 1
+                        }
+                    }
+                }
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    valueOptions.forEach { v ->
+                        ToggleChip(v.toString(), value == v) { value = v }
+                    }
+                }
+            }
+
+            // Between
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                FormFieldLabel("Between")
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    HourCell(windowStartHour) { startHourPickerOpen = true }
+                    Text("and", color = Color(0xFFB8B8B8), fontSize = 13.sp)
+                    HourCell(windowEndHour) { endHourPickerOpen = true }
+                }
+            }
+
+            // On
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                FormFieldLabel("On")
+                WeekdayChips(selected = weekdays) { day ->
+                    weekdays = if (day in weekdays) weekdays - day else weekdays + day
+                }
+            }
+
+            // Ends
+            EndsBlock(
+                end = end,
+                onChange = { end = it },
+                onPickDate = { untilDatePickerOpen = true },
+                tz = tz,
+            )
+        }
+    }
+    SheetSection(
+        shape = RoundedCornerShape(
+            topStart = 4.dp,
+            topEnd = 4.dp,
+            bottomStart = 14.dp,
+            bottomEnd = 14.dp,
+        ),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = SHEET_SECTION_HORIZONTAL_PADDING.dp - 6.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Spacer(modifier = Modifier.weight(1f))
+            TextButton(
+                enabled = canSave,
+                onClick = {
+                    val nowLocal = Clock.System.now().toLocalDateTime(tz)
+                    val dtStart = computeIntervalDtStart(nowLocal, weekdays, windowStartHour, tz)
+                    val rule = buildIntervalRule(value, unit, windowStartHour, windowEndHour, weekdays)
+                    val until = (end as? EndChoice.OnDate)?.date
+                        ?.atTime(23, 59)
+                        ?.toInstant(tz)
+                    val count = (end as? EndChoice.AfterCount)?.count
+                    onConfirm(
+                        Alarm.RecurringTime(
+                            rule = rule,
+                            dtStart = dtStart,
+                            until = until,
+                            count = count,
+                        )
+                    )
+                },
+            ) {
+                Text(
+                    text = "Done",
+                    color = if (canSave) Color(0xFFEDEDED) else Color(0xFF555555),
+                    fontWeight = FontWeight.ExtraBold,
+                )
+            }
+        }
+    }
+
+    if (startHourPickerOpen) {
+        HourPickerDialog(
+            initialHour = windowStartHour,
+            onDismiss = { startHourPickerOpen = false },
+            onConfirm = { picked ->
+                windowStartHour = picked
+                startHourPickerOpen = false
+            },
+        )
+    }
+    if (endHourPickerOpen) {
+        HourPickerDialog(
+            initialHour = windowEndHour,
+            onDismiss = { endHourPickerOpen = false },
+            onConfirm = { picked ->
+                windowEndHour = picked
+                endHourPickerOpen = false
+            },
+        )
+    }
+    if (untilDatePickerOpen) {
+        val initialDate = (end as? EndChoice.OnDate)?.date ?: defaultUntilDate(tz)
+        DatePickerOverlay(
+            initial = initialDate,
+            onDismiss = { untilDatePickerOpen = false },
+            onConfirm = { picked ->
+                end = EndChoice.OnDate(picked)
+                untilDatePickerOpen = false
+            },
+        )
+    }
+}
+
+private enum class IntervalUnit { MINUTES, HOURS }
+
+private sealed class EndChoice {
+    data object Never : EndChoice()
+    data class OnDate(val date: LocalDate) : EndChoice()
+    data class AfterCount(val count: Int) : EndChoice()
+}
+
+private val MINUTE_OPTIONS = listOf(5, 10, 15, 30, 45, 60, 90, 120)
+private val HOUR_OPTIONS = listOf(1, 2, 3, 4, 6, 8, 12)
+private val WEEKDAYS_ORDERED = listOf(
+    DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY,
+    DayOfWeek.FRIDAY, DayOfWeek.SATURDAY, DayOfWeek.SUNDAY,
+)
+private val WEEKDAY_CHIP_LABELS = listOf("M", "T", "W", "T", "F", "S", "S")
+
+@Composable
+private fun ToggleChip(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val bg = if (selected) Color(0xFFEDEDED) else Color(0xFF222222)
+    val fg = if (selected) Color(0xFF111111) else Color(0xFFB8B8B8)
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(20))
+            .background(bg)
+            .clickable { onClick() }
+            .padding(horizontal = 14.dp, vertical = 6.dp),
+    ) {
+        Text(
+            text = label,
+            color = fg,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Medium,
+        )
+    }
+}
+
+@Composable
+private fun WeekdayChips(
+    selected: Set<DayOfWeek>,
+    onToggle: (DayOfWeek) -> Unit,
+) {
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        WEEKDAYS_ORDERED.forEachIndexed { i, day ->
+            ToggleChip(WEEKDAY_CHIP_LABELS[i], day in selected) { onToggle(day) }
+        }
+    }
+}
+
+@Composable
+private fun HourCell(hour: Int, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(Color(0xFF161616))
+            .clickable { onClick() }
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+    ) {
+        Text(
+            text = formatHourLabel(hour),
+            color = Color(0xFFEDEDED),
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Medium,
+        )
+    }
+}
+
+@Composable
+private fun EndsBlock(
+    end: EndChoice,
+    onChange: (EndChoice) -> Unit,
+    onPickDate: () -> Unit,
+    tz: TimeZone,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        FormFieldLabel("Ends")
+        RadioRow(
+            label = "Never",
+            selected = end is EndChoice.Never,
+            onClick = { onChange(EndChoice.Never) },
+        )
+        RadioRow(
+            label = "On date",
+            selected = end is EndChoice.OnDate,
+            onClick = {
+                val date = (end as? EndChoice.OnDate)?.date ?: defaultUntilDate(tz)
+                onChange(EndChoice.OnDate(date))
+            },
+            trailing = {
+                if (end is EndChoice.OnDate) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xFF161616))
+                            .clickable { onPickDate() }
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                    ) {
+                        Text(
+                            text = formatDateLabel(end.date, tz),
+                            color = Color(0xFFEDEDED),
+                            fontSize = 13.sp,
+                        )
+                    }
+                }
+            },
+        )
+        RadioRow(
+            label = "After",
+            selected = end is EndChoice.AfterCount,
+            onClick = {
+                val n = (end as? EndChoice.AfterCount)?.count ?: 10
+                onChange(EndChoice.AfterCount(n))
+            },
+            trailing = {
+                if (end is EndChoice.AfterCount) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        NumberStepper(
+                            value = end.count,
+                            onChange = { onChange(EndChoice.AfterCount(it)) },
+                            min = 1,
+                            max = 999,
+                        )
+                        Text(
+                            text = "times",
+                            color = Color(0xFFB8B8B8),
+                            fontSize = 13.sp,
+                        )
+                    }
+                }
+            },
+        )
+    }
+}
+
+@Composable
+private fun RadioRow(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    trailing: @Composable (() -> Unit)? = null,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(16.dp)
+                .clip(RoundedCornerShape(50))
+                .then(
+                    if (selected) Modifier.background(Color(0xFFEDEDED))
+                    else Modifier.border(1.5.dp, Color(0xFF888888), RoundedCornerShape(50))
+                ),
+        )
+        Spacer(modifier = Modifier.width(10.dp))
+        Text(
+            text = label,
+            color = Color(0xFFEDEDED),
+            fontSize = 14.sp,
+        )
+        Spacer(modifier = Modifier.weight(1f))
+        trailing?.invoke()
+    }
+}
+
+@Composable
+private fun NumberStepper(
+    value: Int,
+    onChange: (Int) -> Unit,
+    min: Int,
+    max: Int,
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        StepperButton("−") { if (value > min) onChange(value - 1) }
+        Text(
+            text = value.toString(),
+            color = Color(0xFFEDEDED),
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Medium,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.widthIn(min = 28.dp).padding(horizontal = 6.dp),
+        )
+        StepperButton("+") { if (value < max) onChange(value + 1) }
+    }
+}
+
+@Composable
+private fun StepperButton(label: String, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .size(28.dp)
+            .clip(RoundedCornerShape(50))
+            .background(Color(0xFF222222))
+            .clickable { onClick() },
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = label,
+            color = Color(0xFFEDEDED),
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Bold,
+        )
+    }
+}
+
+@Composable
+private fun FormFieldLabel(text: String) {
+    Text(
+        text = text,
+        color = Color(0xFFB8B8B8),
+        fontSize = 13.sp,
+        fontWeight = FontWeight.Medium,
+    )
+}
+
+/**
+ * Shared TimePicker-in-AlertDialog used by the interval form's window pickers. We
+ * ask the user for an hour:minute but only consume the hour — interval windows are
+ * hour-granular by design (BYHOUR filters at hour resolution).
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun HourPickerDialog(
+    initialHour: Int,
+    onDismiss: () -> Unit,
+    onConfirm: (Int) -> Unit,
+) {
+    val state = rememberTimePickerState(
+        initialHour = initialHour,
+        initialMinute = 0,
+        is24Hour = false,
+    )
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(onClick = { onConfirm(state.hour) }) { Text("OK") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+        text = { TimePicker(state = state) },
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DatePickerOverlay(
+    initial: LocalDate,
+    onDismiss: () -> Unit,
+    onConfirm: (LocalDate) -> Unit,
+) {
+    val state = rememberDatePickerState(
+        initialSelectedDateMillis = initial.atTime(0, 0).toInstant(TimeZone.UTC).toEpochMilliseconds(),
+    )
+    DatePickerDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(onClick = {
+                state.selectedDateMillis?.let { ms ->
+                    onConfirm(Instant.fromEpochMilliseconds(ms).toLocalDateTime(TimeZone.UTC).date)
+                }
+            }) { Text("OK") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    ) {
+        DatePicker(state = state)
+    }
+}
+
+/**
+ * First firing for an interval rule: the next selected weekday whose [windowStartHour]
+ * is still ahead of [nowLocal]. Defaults to "today at windowStart" if today qualifies
+ * and we haven't passed the window start; otherwise advances day-by-day.
+ */
+private fun computeIntervalDtStart(
+    nowLocal: LocalDateTime,
+    weekdays: Set<DayOfWeek>,
+    windowStartHour: Int,
+    tz: TimeZone,
+): Instant {
+    val days = weekdays.ifEmpty { WEEKDAYS_ORDERED.toSet() }
+    val windowStartToday = nowLocal.date.atTime(windowStartHour, 0)
+    if (nowLocal.dayOfWeek in days && nowLocal < windowStartToday) {
+        return windowStartToday.toInstant(tz)
+    }
+    var d = nowLocal.date.plus(1, DateTimeUnit.DAY)
+    repeat(7) {
+        if (d.dayOfWeek in days) {
+            return d.atTime(windowStartHour, 0).toInstant(tz)
+        }
+        d = d.plus(1, DateTimeUnit.DAY)
+    }
+    return windowStartToday.toInstant(tz)
+}
+
+private fun buildIntervalRule(
+    value: Int,
+    unit: IntervalUnit,
+    windowStartHour: Int,
+    windowEndHour: Int,
+    weekdays: Set<DayOfWeek>,
+): String {
+    val freq = if (unit == IntervalUnit.MINUTES) "MINUTELY" else "HOURLY"
+    return buildString {
+        append("FREQ=$freq;INTERVAL=$value")
+        if (windowEndHour >= windowStartHour) {
+            val hours = (windowStartHour..windowEndHour).joinToString(",")
+            append(";BYHOUR=$hours")
+        }
+        if (weekdays.isNotEmpty() && weekdays.size < 7) {
+            val days = weekdays
+                .sortedBy { it.isoDayNumber }
+                .joinToString(",") { it.rruleCode() }
+            append(";BYDAY=$days")
+        }
+    }
+}
+
+private fun DayOfWeek.rruleCode(): String = when (this) {
+    DayOfWeek.MONDAY -> "MO"
+    DayOfWeek.TUESDAY -> "TU"
+    DayOfWeek.WEDNESDAY -> "WE"
+    DayOfWeek.THURSDAY -> "TH"
+    DayOfWeek.FRIDAY -> "FR"
+    DayOfWeek.SATURDAY -> "SA"
+    DayOfWeek.SUNDAY -> "SU"
+}
+
+private fun defaultUntilDate(tz: TimeZone): LocalDate =
+    Clock.System.now().toLocalDateTime(tz).date.plus(30, DateTimeUnit.DAY)
+
+private fun formatHourLabel(hour: Int): String {
+    val h12 = ((hour + 11) % 12) + 1
+    val suffix = if (hour < 12) "AM" else "PM"
+    return "${h12.toString().padStart(2, '0')}:00 $suffix"
 }
 
 @Composable
