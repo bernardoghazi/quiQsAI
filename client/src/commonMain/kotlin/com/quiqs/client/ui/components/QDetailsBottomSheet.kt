@@ -65,6 +65,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.max
 import androidx.compose.ui.unit.sp
 import com.quiqs.client.LocalThemeIsDark
 import com.quiqs.client.QuiqsColorScheme
@@ -1231,7 +1232,7 @@ private fun IntervalForm(
                     ToggleChip("minutes", unit == IntervalUnit.MINUTES) {
                         if (unit != IntervalUnit.MINUTES) {
                             unit = IntervalUnit.MINUTES
-                            valueText = "30"
+                            valueText = "15"
                         }
                     }
                     ToggleChip("hours", unit == IntervalUnit.HOURS) {
@@ -1380,7 +1381,7 @@ private fun NumberField(
         modifier = Modifier
             .clip(RoundedCornerShape(8.dp))
             .background(Color(0xFF222222))
-            .widthIn(min = 28.dp)
+            .widthIn(min = 20.dp, max = 56.dp)
             .padding(horizontal = 12.dp, vertical = 8.dp),
         contentAlignment = Alignment.Center,
     ) {
