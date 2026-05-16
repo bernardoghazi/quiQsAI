@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
@@ -59,6 +60,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.DpOffset
@@ -1181,7 +1183,8 @@ private fun IntervalForm(
     val seed = (editing as? Alarm.RecurringTime)?.let { parseIntervalAlarm(it, tz) }
     val seedStartLocal = (seed?.dtStart ?: defaultDtStart(tz)).toLocalDateTime(tz)
     var unit by remember { mutableStateOf(seed?.unit ?: IntervalUnit.MINUTES) }
-    var value by remember { mutableStateOf(seed?.value ?: 30) }
+    var valueText by remember { mutableStateOf((seed?.value ?: 30).toString()) }
+    val valueInt = valueText.toIntOrNull() ?: 0
     var weekdays by remember {
         mutableStateOf<Set<DayOfWeek>>(seed?.weekdays ?: WEEKDAYS_ORDERED.toSet())
     }
@@ -1194,14 +1197,7 @@ private fun IntervalForm(
     var dtStartTimePickerOpen by remember { mutableStateOf(false) }
     var untilDatePickerOpen by remember { mutableStateOf(false) }
 
-    // Always include the current value so a pre-filled "custom" interval (e.g. 7 min
-    // from the LLM) still surfaces as a highlighted chip — even when it's outside our
-    // canonical option list.
-    val valueOptions = run {
-        val base = if (unit == IntervalUnit.MINUTES) MINUTE_OPTIONS else HOUR_OPTIONS
-        if (value in base) base else (base + value).sorted()
-    }
-    val canSave = weekdays.isNotEmpty() && value >= 1
+    val canSave = weekdays.isNotEmpty() && valueInt >= 1
 
     SheetSection(
         shape = RoundedCornerShape(
@@ -1224,26 +1220,25 @@ private fun IntervalForm(
             // Every
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 FormFieldLabel("Every")
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    NumberField(
+                        text = valueText,
+                        onTextChange = { valueText = it },
+                    )
                     ToggleChip("minutes", unit == IntervalUnit.MINUTES) {
                         if (unit != IntervalUnit.MINUTES) {
                             unit = IntervalUnit.MINUTES
-                            value = 30
+                            valueText = "30"
                         }
                     }
                     ToggleChip("hours", unit == IntervalUnit.HOURS) {
                         if (unit != IntervalUnit.HOURS) {
                             unit = IntervalUnit.HOURS
-                            value = 1
+                            valueText = "1"
                         }
-                    }
-                }
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    valueOptions.forEach { v ->
-                        ToggleChip(v.toString(), value == v) { value = v }
                     }
                 }
             }
@@ -1303,7 +1298,7 @@ private fun IntervalForm(
                 enabled = canSave,
                 onClick = {
                     val dtStart = dtStartDate.atTime(dtStartHour, dtStartMinute).toInstant(tz)
-                    val rule = buildIntervalRule(value, unit, weekdays)
+                    val rule = buildIntervalRule(valueInt, unit, weekdays)
                     val until = (end as? EndChoice.OnDate)?.date
                         ?.atTime(23, 59)
                         ?.toInstant(tz)
@@ -1370,13 +1365,43 @@ private sealed class EndChoice {
     data class AfterCount(val count: Int) : EndChoice()
 }
 
-private val MINUTE_OPTIONS = listOf(5, 10, 15, 30, 45, 60, 90, 120)
-private val HOUR_OPTIONS = listOf(1, 2, 3, 4, 6, 8, 12)
 private val WEEKDAYS_ORDERED = listOf(
     DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY,
     DayOfWeek.FRIDAY, DayOfWeek.SATURDAY, DayOfWeek.SUNDAY,
 )
 private val WEEKDAY_CHIP_LABELS = listOf("M", "T", "W", "T", "F", "S", "S")
+
+@Composable
+private fun NumberField(
+    text: String,
+    onTextChange: (String) -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color(0xFF222222))
+            .widthIn(min = 56.dp)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        BasicTextField(
+            value = text,
+            onValueChange = { input ->
+                // Defensive: numeric keyboard can still leak non-digits on some platforms.
+                onTextChange(input.filter { it.isDigit() }.take(3))
+            },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            textStyle = TextStyle(
+                color = Color(0xFFEDEDED),
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                textAlign = TextAlign.Center,
+            ),
+            cursorBrush = SolidColor(Color(0xFFEDEDED)),
+            singleLine = true,
+        )
+    }
+}
 
 @Composable
 private fun ToggleChip(
