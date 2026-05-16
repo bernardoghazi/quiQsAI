@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -29,6 +30,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -105,6 +107,7 @@ import kotlinx.datetime.TimeZone
 import kotlinx.datetime.atTime
 import kotlinx.datetime.daysUntil
 import kotlinx.datetime.isoDayNumber
+import kotlinx.datetime.number
 import kotlinx.datetime.plus
 import kotlinx.datetime.toInstant
 import kotlinx.datetime.toLocalDateTime
@@ -873,9 +876,10 @@ private fun AlarmBuilder(
                         onBack = { step = AlarmBuilderStep.PickType },
                         onConfirm = onAlarmChosen,
                     )
-                    AlarmBuilderStep.FormCalendar -> ComingSoonForm(
-                        title = "Calendar",
+                    AlarmBuilderStep.FormCalendar -> CalendarForm(
+                        editing = editing,
                         onBack = { step = AlarmBuilderStep.PickType },
+                        onConfirm = onAlarmChosen,
                     )
                 }
             }
@@ -1358,7 +1362,272 @@ private fun IntervalForm(
     }
 }
 
+/**
+ * Form for a "calendar" recurring alarm: fire on a daily / weekly / monthly / yearly
+ * cadence. Most pattern values (day-of-month, Nth-weekday, target month for yearly)
+ * are derived from [Alarm.RecurringTime.dtStart]; the form only exposes the
+ * frequency, the interval, and — for monthly/yearly — a date-vs-Nth-weekday toggle.
+ *
+ * Pre-fills from [editing] when it is a [Alarm.RecurringTime] whose rule has
+ * `FREQ=DAILY|WEEKLY|MONTHLY|YEARLY`; otherwise opens at defaults (user is
+ * switching alarm type).
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CalendarForm(
+    editing: Alarm?,
+    onBack: () -> Unit,
+    onConfirm: (Alarm.RecurringTime) -> Unit,
+) {
+    val tz = TimeZone.currentSystemDefault()
+    val seed = (editing as? Alarm.RecurringTime)?.let { parseCalendarAlarm(it, tz) }
+    val seedStartLocal = (seed?.dtStart ?: defaultDtStart(tz)).toLocalDateTime(tz)
+
+    var freq by remember { mutableStateOf(seed?.freq ?: CalendarFreq.WEEKLY) }
+    var intervalText by remember { mutableStateOf((seed?.interval ?: 1).toString()) }
+    val intervalInt = intervalText.toIntOrNull() ?: 0
+    var weeklyDays by remember {
+        mutableStateOf<Set<DayOfWeek>>(seed?.weeklyDays ?: emptySet())
+    }
+    var monthlyMode by remember { mutableStateOf(seed?.monthlyMode ?: MonthlyMode.DAY_OF_MONTH) }
+    var monthlyDay by remember { mutableStateOf(seed?.monthlyDay ?: seedStartLocal.date.day) }
+    var monthlyOrdinal by remember { mutableStateOf(seed?.monthlyOrdinal ?: NthOrdinal.FIRST) }
+    var monthlyWeekday by remember { mutableStateOf(seed?.monthlyWeekday ?: seedStartLocal.date.dayOfWeek) }
+    var dtStartDate by remember { mutableStateOf(seedStartLocal.date) }
+    var dtStartHour by remember { mutableStateOf(seedStartLocal.hour) }
+    var dtStartMinute by remember { mutableStateOf(seedStartLocal.minute) }
+    var end by remember { mutableStateOf<EndChoice>(seed?.end ?: EndChoice.Never) }
+
+    var datePickerOpen by remember { mutableStateOf(false) }
+    var timePickerOpen by remember { mutableStateOf(false) }
+    var untilDatePickerOpen by remember { mutableStateOf(false) }
+
+    val canSave = intervalInt >= 1 && when (freq) {
+        CalendarFreq.WEEKLY -> weeklyDays.isNotEmpty()
+        else -> true
+    }
+
+    SheetSection(
+        shape = RoundedCornerShape(
+            topStart = 14.dp,
+            topEnd = 14.dp,
+            bottomStart = 4.dp,
+            bottomEnd = 4.dp,
+        ),
+    ) {
+        BuilderHeader(title = "Calendar alarm", onBack = onBack)
+    }
+    // Section A: Every (+ freq-specific bits) + At
+    SheetSection(shape = RoundedCornerShape(4.dp)) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = SHEET_SECTION_HORIZONTAL_PADDING.dp, vertical = 18.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                FormFieldLabel("Every")
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    itemVerticalAlignment = Alignment.CenterVertically,
+                ) {
+                    NumberField(
+                        text = intervalText,
+                        onTextChange = { intervalText = it },
+                    )
+                    ToggleChip("day", freq == CalendarFreq.DAILY) { freq = CalendarFreq.DAILY }
+                    ToggleChip("week", freq == CalendarFreq.WEEKLY) { freq = CalendarFreq.WEEKLY }
+                    ToggleChip("month", freq == CalendarFreq.MONTHLY) { freq = CalendarFreq.MONTHLY }
+                    ToggleChip("year", freq == CalendarFreq.YEARLY) { freq = CalendarFreq.YEARLY }
+                }
+            }
+
+            when (freq) {
+                CalendarFreq.DAILY -> Unit
+                CalendarFreq.WEEKLY -> WeekdayChips(selected = weeklyDays) { day ->
+                    weeklyDays = if (day in weeklyDays) weeklyDays - day else weeklyDays + day
+                }
+                CalendarFreq.MONTHLY -> Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    RadioContentRow(
+                        selected = monthlyMode == MonthlyMode.DAY_OF_MONTH,
+                        onClick = { monthlyMode = MonthlyMode.DAY_OF_MONTH },
+                    ) {
+                        InlineLabel("Day")
+                        DropdownPicker(
+                            selected = monthlyDay,
+                            options = (1..31).toList(),
+                            labelOf = { it.toString() },
+                            onSelect = { monthlyDay = it },
+                        )
+                        InlineLabel("of the month")
+                    }
+                    RadioContentRow(
+                        selected = monthlyMode == MonthlyMode.NTH_WEEKDAY,
+                        onClick = { monthlyMode = MonthlyMode.NTH_WEEKDAY },
+                    ) {
+                        InlineLabel("The")
+                        DropdownPicker(
+                            selected = monthlyOrdinal,
+                            options = NthOrdinal.entries.toList(),
+                            labelOf = { it.label },
+                            onSelect = { monthlyOrdinal = it },
+                        )
+                        DropdownPicker(
+                            selected = monthlyWeekday,
+                            options = SUNDAY_FIRST_WEEKDAYS,
+                            labelOf = { it.fullLabel() },
+                            onSelect = { monthlyWeekday = it },
+                        )
+                    }
+                }
+                CalendarFreq.YEARLY -> Unit
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                FormFieldLabel("At")
+                StartingCell(
+                    text = formatTimeLabel(dtStartHour, dtStartMinute),
+                    onClick = { timePickerOpen = true },
+                )
+            }
+        }
+    }
+    // Section B: Starting (date)
+    SheetSection(shape = RoundedCornerShape(4.dp)) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = SHEET_SECTION_HORIZONTAL_PADDING.dp, vertical = 18.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            FormFieldLabel("Starting")
+            StartingCell(
+                text = formatDateLabel(dtStartDate, tz),
+                onClick = { datePickerOpen = true },
+            )
+        }
+    }
+    // Section C: Ends
+    SheetSection(shape = RoundedCornerShape(4.dp)) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = SHEET_SECTION_HORIZONTAL_PADDING.dp, vertical = 18.dp),
+        ) {
+            EndsBlock(
+                end = end,
+                onChange = { end = it },
+                onPickDate = { untilDatePickerOpen = true },
+                tz = tz,
+            )
+        }
+    }
+    SheetSection(
+        shape = RoundedCornerShape(
+            topStart = 4.dp,
+            topEnd = 4.dp,
+            bottomStart = 14.dp,
+            bottomEnd = 14.dp,
+        ),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = SHEET_SECTION_HORIZONTAL_PADDING.dp - 6.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Spacer(modifier = Modifier.weight(1f))
+            TextButton(
+                enabled = canSave,
+                onClick = {
+                    val dtStart = dtStartDate.atTime(dtStartHour, dtStartMinute).toInstant(tz)
+                    val rule = buildCalendarRule(
+                        freq = freq,
+                        interval = intervalInt,
+                        weeklyDays = weeklyDays,
+                        monthlyMode = monthlyMode,
+                        monthlyDay = monthlyDay,
+                        monthlyOrdinal = monthlyOrdinal,
+                        monthlyWeekday = monthlyWeekday,
+                        dtStartDate = dtStartDate,
+                    )
+                    val until = (end as? EndChoice.OnDate)?.date
+                        ?.atTime(23, 59)
+                        ?.toInstant(tz)
+                    val count = (end as? EndChoice.AfterCount)?.count
+                    onConfirm(
+                        Alarm.RecurringTime(
+                            rule = rule,
+                            dtStart = dtStart,
+                            until = until,
+                            count = count,
+                        )
+                    )
+                },
+            ) {
+                Text(
+                    text = "Done",
+                    color = if (canSave) Color(0xFFEDEDED) else Color(0xFF555555),
+                    fontWeight = FontWeight.ExtraBold,
+                )
+            }
+        }
+    }
+
+    if (datePickerOpen) {
+        DatePickerOverlay(
+            initial = dtStartDate,
+            onDismiss = { datePickerOpen = false },
+            onConfirm = { picked ->
+                dtStartDate = picked
+                datePickerOpen = false
+            },
+        )
+    }
+    if (timePickerOpen) {
+        TimePickerOverlay(
+            initialHour = dtStartHour,
+            initialMinute = dtStartMinute,
+            onDismiss = { timePickerOpen = false },
+            onConfirm = { h, m ->
+                dtStartHour = h
+                dtStartMinute = m
+                timePickerOpen = false
+            },
+        )
+    }
+    if (untilDatePickerOpen) {
+        val initialDate = (end as? EndChoice.OnDate)?.date ?: defaultUntilDate(tz)
+        DatePickerOverlay(
+            initial = initialDate,
+            onDismiss = { untilDatePickerOpen = false },
+            onConfirm = { picked ->
+                end = EndChoice.OnDate(picked)
+                untilDatePickerOpen = false
+            },
+        )
+    }
+}
+
 private enum class IntervalUnit { MINUTES, HOURS }
+
+private enum class CalendarFreq { DAILY, WEEKLY, MONTHLY, YEARLY }
+
+private enum class MonthlyMode { DAY_OF_MONTH, NTH_WEEKDAY }
+
+private enum class NthOrdinal(val rfcValue: Int, val label: String) {
+    FIRST(1, "first"),
+    SECOND(2, "second"),
+    THIRD(3, "third"),
+    FOURTH(4, "fourth"),
+    LAST(-1, "last"),
+}
+
+private val SUNDAY_FIRST_WEEKDAYS = listOf(
+    DayOfWeek.SUNDAY, DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY,
+    DayOfWeek.THURSDAY, DayOfWeek.FRIDAY, DayOfWeek.SATURDAY,
+)
 
 private sealed class EndChoice {
     data object Never : EndChoice()
@@ -1566,6 +1835,100 @@ private fun RadioRow(
     }
 }
 
+/**
+ * Radio-row variant with a flexible content slot rather than a single [String] label —
+ * used by the monthly pattern rows in [CalendarForm], which embed dropdowns inline
+ * with the row label text.
+ */
+@Composable
+private fun RadioContentRow(
+    selected: Boolean,
+    onClick: () -> Unit,
+    content: @Composable RowScope.() -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(16.dp)
+                .clip(RoundedCornerShape(50))
+                .then(
+                    if (selected) Modifier.background(Color(0xFFEDEDED))
+                    else Modifier.border(1.5.dp, Color(0xFF888888), RoundedCornerShape(50))
+                ),
+        )
+        content()
+    }
+}
+
+@Composable
+private fun InlineLabel(text: String) {
+    Text(
+        text = text,
+        color = Color(0xFFEDEDED),
+        fontSize = 14.sp,
+    )
+}
+
+/**
+ * Tappable cell that opens a [DropdownMenu] anchored to itself. Used by the monthly
+ * pattern rows for day-of-month / ordinal / weekday selection.
+ */
+@Composable
+private fun <T> DropdownPicker(
+    selected: T,
+    options: List<T>,
+    labelOf: (T) -> String,
+    onSelect: (T) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var open by remember { mutableStateOf(false) }
+    Box(modifier = modifier) {
+        Box(
+            modifier = Modifier
+                .clip(RoundedCornerShape(8.dp))
+                .background(Color(0xFF161616))
+                .clickable { open = true }
+                .padding(horizontal = 10.dp, vertical = 6.dp),
+        ) {
+            Text(
+                text = labelOf(selected),
+                color = Color(0xFFEDEDED),
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+            )
+        }
+        DropdownMenu(
+            expanded = open,
+            onDismissRequest = { open = false },
+            shape = RoundedCornerShape(8.dp),
+            containerColor = Color(0xFF1F1F1F),
+        ) {
+            options.forEach { option ->
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            text = labelOf(option),
+                            color = Color(0xFFEDEDED),
+                            fontSize = 13.sp,
+                        )
+                    },
+                    onClick = {
+                        onSelect(option)
+                        open = false
+                    },
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun NumberStepper(
     value: Int,
@@ -1744,6 +2107,163 @@ private fun buildIntervalRule(
     }
 }
 
+private data class CalendarFormDefaults(
+    val freq: CalendarFreq,
+    val interval: Int,
+    val weeklyDays: Set<DayOfWeek>,
+    val monthlyMode: MonthlyMode,
+    val monthlyDay: Int?,
+    val monthlyOrdinal: NthOrdinal?,
+    val monthlyWeekday: DayOfWeek?,
+    val dtStart: Instant,
+    val end: EndChoice,
+)
+
+/**
+ * Inverse of [buildCalendarRule]: extracts the calendar-form fields from an
+ * existing recurring alarm. Pattern values (day-of-month, Nth weekday, target
+ * month) live on `dtStart` — only `freq`, `interval`, `weeklyDays`, and the
+ * monthly/yearly date-vs-Nth toggle are read from the rule string. Returns
+ * `null` for sub-day frequencies (the user is switching alarm type).
+ */
+private fun parseCalendarAlarm(alarm: Alarm.RecurringTime, tz: TimeZone): CalendarFormDefaults? {
+    val parts = alarm.rule
+        .split(';')
+        .mapNotNull { piece ->
+            val eq = piece.indexOf('=')
+            if (eq <= 0) null
+            else piece.substring(0, eq).trim().uppercase() to piece.substring(eq + 1).trim()
+        }
+        .toMap()
+
+    val freq = when (parts["FREQ"]?.uppercase()) {
+        "DAILY" -> CalendarFreq.DAILY
+        "WEEKLY" -> CalendarFreq.WEEKLY
+        "MONTHLY" -> CalendarFreq.MONTHLY
+        "YEARLY" -> CalendarFreq.YEARLY
+        else -> return null
+    }
+    val interval = parts["INTERVAL"]?.toIntOrNull()?.coerceAtLeast(1) ?: 1
+    val weeklyDays = if (freq == CalendarFreq.WEEKLY) {
+        parts["BYDAY"]
+            ?.split(',')
+            ?.mapNotNull { it.toDayOfWeekIgnoringOrdinal() }
+            ?.toSet()
+            ?: emptySet()
+    } else emptySet()
+    val monthlyMode = if (freq == CalendarFreq.MONTHLY || freq == CalendarFreq.YEARLY) {
+        val byDay = parts["BYDAY"]
+        if (byDay != null && byDayHasOrdinal(byDay)) MonthlyMode.NTH_WEEKDAY
+        else MonthlyMode.DAY_OF_MONTH
+    } else MonthlyMode.DAY_OF_MONTH
+
+    val monthlyDay = if (freq == CalendarFreq.MONTHLY && monthlyMode == MonthlyMode.DAY_OF_MONTH) {
+        parts["BYMONTHDAY"]?.split(',')?.firstNotNullOfOrNull { it.toIntOrNull() }
+    } else null
+
+    val nthFromByDay = if (freq == CalendarFreq.MONTHLY && monthlyMode == MonthlyMode.NTH_WEEKDAY) {
+        parts["BYDAY"]?.split(',')?.firstOrNull()?.trim()?.let { token ->
+            val day = token.takeLast(2).toDayOfWeekIgnoringOrdinal()
+            val rfc = token.dropLast(2).toIntOrNull()
+            if (day != null && rfc != null) {
+                NthOrdinal.entries.firstOrNull { it.rfcValue == rfc } to day
+            } else null
+        }
+    } else null
+
+    val count = alarm.count
+    val until = alarm.until
+    val end = when {
+        count != null -> EndChoice.AfterCount(count)
+        until != null -> EndChoice.OnDate(until.toLocalDateTime(tz).date)
+        else -> EndChoice.Never
+    }
+
+    return CalendarFormDefaults(
+        freq = freq,
+        interval = interval,
+        weeklyDays = weeklyDays,
+        monthlyMode = monthlyMode,
+        monthlyDay = monthlyDay,
+        monthlyOrdinal = nthFromByDay?.first,
+        monthlyWeekday = nthFromByDay?.second,
+        dtStart = alarm.dtStart,
+        end = end,
+    )
+}
+
+private fun byDayHasOrdinal(byDay: String): Boolean = byDay.split(',').any { token ->
+    val trimmed = token.trim()
+    trimmed.length > 2 && trimmed.dropLast(2).toIntOrNull() != null
+}
+
+private fun buildCalendarRule(
+    freq: CalendarFreq,
+    interval: Int,
+    weeklyDays: Set<DayOfWeek>,
+    monthlyMode: MonthlyMode,
+    monthlyDay: Int,
+    monthlyOrdinal: NthOrdinal,
+    monthlyWeekday: DayOfWeek,
+    dtStartDate: LocalDate,
+): String {
+    val freqStr = when (freq) {
+        CalendarFreq.DAILY -> "DAILY"
+        CalendarFreq.WEEKLY -> "WEEKLY"
+        CalendarFreq.MONTHLY -> "MONTHLY"
+        CalendarFreq.YEARLY -> "YEARLY"
+    }
+    return buildString {
+        append("FREQ=$freqStr;INTERVAL=$interval")
+        when (freq) {
+            CalendarFreq.WEEKLY -> {
+                if (weeklyDays.size in 1..6) {
+                    val days = weeklyDays
+                        .sortedBy { it.isoDayNumber }
+                        .joinToString(",") { it.rruleCode() }
+                    append(";BYDAY=$days")
+                }
+            }
+            CalendarFreq.MONTHLY -> when (monthlyMode) {
+                MonthlyMode.DAY_OF_MONTH -> append(";BYMONTHDAY=$monthlyDay")
+                MonthlyMode.NTH_WEEKDAY -> append(
+                    ";BYDAY=${monthlyOrdinal.rfcValue}${monthlyWeekday.rruleCode()}"
+                )
+            }
+            CalendarFreq.YEARLY -> {
+                append(";BYMONTH=${dtStartDate.month.number}")
+                append(";BYMONTHDAY=${dtStartDate.day}")
+            }
+            CalendarFreq.DAILY -> Unit
+        }
+    }
+}
+
+private fun DayOfWeek.fullLabel(): String = when (this) {
+    DayOfWeek.MONDAY -> "Monday"
+    DayOfWeek.TUESDAY -> "Tuesday"
+    DayOfWeek.WEDNESDAY -> "Wednesday"
+    DayOfWeek.THURSDAY -> "Thursday"
+    DayOfWeek.FRIDAY -> "Friday"
+    DayOfWeek.SATURDAY -> "Saturday"
+    DayOfWeek.SUNDAY -> "Sunday"
+}
+
+private fun Month.fullLabel(): String = when (this) {
+    Month.JANUARY -> "January"
+    Month.FEBRUARY -> "February"
+    Month.MARCH -> "March"
+    Month.APRIL -> "April"
+    Month.MAY -> "May"
+    Month.JUNE -> "June"
+    Month.JULY -> "July"
+    Month.AUGUST -> "August"
+    Month.SEPTEMBER -> "September"
+    Month.OCTOBER -> "October"
+    Month.NOVEMBER -> "November"
+    Month.DECEMBER -> "December"
+}
+
 private fun DayOfWeek.rruleCode(): String = when (this) {
     DayOfWeek.MONDAY -> "MO"
     DayOfWeek.TUESDAY -> "TU"
@@ -1760,43 +2280,6 @@ private fun defaultUntilDate(tz: TimeZone): LocalDate =
 private fun defaultDtStart(tz: TimeZone): Instant {
     val nowLocal = Clock.System.now().toLocalDateTime(tz)
     return nowLocal.date.atTime(nowLocal.hour, nowLocal.minute).toInstant(tz)
-}
-
-@Composable
-private fun ComingSoonForm(
-    title: String,
-    onBack: () -> Unit,
-) {
-    SheetSection(
-        shape = RoundedCornerShape(
-            topStart = 14.dp,
-            topEnd = 14.dp,
-            bottomStart = 4.dp,
-            bottomEnd = 4.dp,
-        ),
-    ) {
-        BuilderHeader(title = title, onBack = onBack)
-    }
-    SheetSection(
-        shape = RoundedCornerShape(
-            topStart = 4.dp,
-            topEnd = 4.dp,
-            bottomStart = 14.dp,
-            bottomEnd = 14.dp,
-        ),
-    ) {
-        Box(
-            modifier = Modifier.fillMaxWidth().padding(32.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                text = "Form coming next",
-                color = Color(0xFF888888),
-                fontSize = 13.sp,
-                fontStyle = FontStyle.Italic,
-            )
-        }
-    }
 }
 
 private fun previewSeededDraft(): QDraft {
