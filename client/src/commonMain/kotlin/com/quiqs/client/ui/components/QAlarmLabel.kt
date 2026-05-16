@@ -5,6 +5,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -21,6 +23,7 @@ import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import kotlin.time.Clock
 import kotlin.time.Instant
+import kotlinx.coroutines.delay
 
 /**
  * Shows the user-facing label for a single [Alarm], optionally prefixed with a repeat
@@ -32,12 +35,21 @@ fun QAlarmLabel(
     modifier: Modifier = Modifier,
     color: Color = Color(0XFFB8B8B8),
 ) {
+    // Wall-clock isn't observable state, so the label would otherwise be stale until
+    // the next external recomposition. Ticks on a short interval to update the
+    // 'next occurence' label.
+    val now by produceState(initialValue = Clock.System.now()) {
+        while (true) {
+            delay(15_000)
+            value = Clock.System.now()
+        }
+    }
     Row(
         modifier = modifier,
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        QText(text = alarm.formatLabel(), role = QTextRole.Alarm, color = color)
+        QText(text = alarm.formatLabel(now), role = QTextRole.Alarm, color = color)
         if (alarm is Alarm.RecurringTime) {
             Icon(
                 imageVector = RepeatIcon,
@@ -54,27 +66,27 @@ fun QAlarmLabel(
  * alarms we show the next firing time only — the repeat icon next to it conveys that the
  * alarm recurs. Falls back to the raw rule string if we can't compute a next instant.
  */
-fun Alarm.formatLabel(): String = when (this) {
-    is Alarm.OneOffTime -> formatRelativeDateTime(at)
+fun Alarm.formatLabel(now: Instant): String = when (this) {
+    is Alarm.OneOffTime -> formatRelativeDateTime(at, now)
     is Alarm.RecurringTime -> {
         val tz = TimeZone.currentSystemDefault()
-        val next = nextRecurringInstant(this, Clock.System.now(), tz)
-        if (next != null) formatRelativeDateTime(next) else rule
+        val next = nextRecurringInstant(this, now, tz)
+        if (next != null) formatRelativeDateTime(next, now) else rule
     }
 
     is Alarm.Geofence -> "Near $latitude, $longitude"
 }
 
 /**
- * Format an instant relative to "now" in the device's TZ. Examples:
+ * Format an instant relative to [now] in the device's TZ. Examples:
  *   today    → "Today, 06:32 AM"
  *   tomorrow → "Tomorrow, 06:32 AM"
  *   < 1wk    → "Mon, Apr 27, 07:30 PM"
  *   beyond   → "Apr 27, 2026, 07:30 PM"
  */
-private fun formatRelativeDateTime(at: Instant): String {
+private fun formatRelativeDateTime(at: Instant, now: Instant): String {
     val tz = TimeZone.currentSystemDefault()
-    val nowLocal = Clock.System.now().toLocalDateTime(tz)
+    val nowLocal = now.toLocalDateTime(tz)
     val atLocal = at.toLocalDateTime(tz)
     val daysDiff = atLocal.date.toEpochDays() - nowLocal.date.toEpochDays()
 

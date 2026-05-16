@@ -1380,7 +1380,7 @@ private fun NumberField(
         modifier = Modifier
             .clip(RoundedCornerShape(8.dp))
             .background(Color(0xFF222222))
-            .widthIn(min = 56.dp)
+            .widthIn(min = 28.dp)
             .padding(horizontal = 12.dp, vertical = 8.dp),
         contentAlignment = Alignment.Center,
     ) {
