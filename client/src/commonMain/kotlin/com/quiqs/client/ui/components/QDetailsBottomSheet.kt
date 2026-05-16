@@ -22,6 +22,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -31,7 +34,10 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TimePicker
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -81,7 +87,17 @@ import quiqsai.client.generated.resources.plus
 import quiqsai.client.generated.resources.speaker
 import quiqsai.client.generated.resources.stop
 import quiqsai.client.generated.resources.x
+import kotlin.time.Clock
+import kotlin.time.Duration.Companion.hours
 import kotlin.time.Instant
+import kotlinx.datetime.DayOfWeek
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.Month
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.atTime
+import kotlinx.datetime.daysUntil
+import kotlinx.datetime.toInstant
+import kotlinx.datetime.toLocalDateTime
 
 
 const val SHEET_SECTION_HORIZONTAL_PADDING = 22
@@ -817,7 +833,7 @@ private enum class AlarmBuilderStep {
 private fun AlarmBuilder(
     editing: Alarm?,
     onCancel: () -> Unit,
-    @Suppress("UNUSED_PARAMETER") onAlarmChosen: (Alarm) -> Unit,
+    onAlarmChosen: (Alarm) -> Unit,
 ) {
     var step by remember { mutableStateOf(AlarmBuilderStep.PickType) }
     Column(
@@ -837,9 +853,10 @@ private fun AlarmBuilder(
                         onPickInterval = { step = AlarmBuilderStep.FormInterval },
                         onPickCalendar = { step = AlarmBuilderStep.FormCalendar },
                     )
-                    AlarmBuilderStep.FormOneTime -> ComingSoonForm(
-                        title = "One-time",
+                    AlarmBuilderStep.FormOneTime -> OneTimeForm(
+                        editing = editing,
                         onBack = { step = AlarmBuilderStep.PickType },
+                        onConfirm = onAlarmChosen,
                     )
                     AlarmBuilderStep.FormInterval -> ComingSoonForm(
                         title = "Interval",
@@ -958,6 +975,204 @@ private fun BuilderOptionRow(
             fontSize = 12.sp,
         )
     }
+}
+
+/**
+ * Form for [Alarm.OneOffTime]. Two tappable rows — Date and Time — each open a
+ * Material 3 picker dialog over the bottom sheet. Pre-fills from [editing] if it's
+ * a one-off; otherwise seeds with "next round hour from now". Done builds the
+ * Instant in the device's time zone and hands it back via [onConfirm].
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun OneTimeForm(
+    editing: Alarm?,
+    onBack: () -> Unit,
+    onConfirm: (Alarm.OneOffTime) -> Unit,
+) {
+    val tz = TimeZone.currentSystemDefault()
+    val seed = (editing as? Alarm.OneOffTime)?.at ?: defaultOneTimeStart(tz)
+    val seedLocal = seed.toLocalDateTime(tz)
+
+    var date by remember { mutableStateOf(seedLocal.date) }
+    var hour by remember { mutableStateOf(seedLocal.hour) }
+    var minute by remember { mutableStateOf(seedLocal.minute) }
+    var datePickerOpen by remember { mutableStateOf(false) }
+    var timePickerOpen by remember { mutableStateOf(false) }
+
+    SheetSection(
+        shape = RoundedCornerShape(
+            topStart = 14.dp,
+            topEnd = 14.dp,
+            bottomStart = 4.dp,
+            bottomEnd = 4.dp,
+        ),
+    ) {
+        BuilderHeader(title = "One-time alarm", onBack = onBack)
+    }
+    SheetSection(shape = RoundedCornerShape(4.dp)) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            PickerRow(label = "Date", value = formatDateLabel(date, tz), onClick = { datePickerOpen = true })
+            PickerRow(label = "Time", value = formatTimeLabel(hour, minute), onClick = { timePickerOpen = true })
+        }
+    }
+    SheetSection(
+        shape = RoundedCornerShape(
+            topStart = 4.dp,
+            topEnd = 4.dp,
+            bottomStart = 14.dp,
+            bottomEnd = 14.dp,
+        ),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = SHEET_SECTION_HORIZONTAL_PADDING.dp - 6.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Spacer(modifier = Modifier.weight(1f))
+            TextButton(onClick = {
+                val instant = date.atTime(hour, minute).toInstant(tz)
+                onConfirm(Alarm.OneOffTime(at = instant))
+            }) {
+                Text(
+                    text = "Done",
+                    color = Color(0xFFEDEDED),
+                    fontWeight = FontWeight.ExtraBold,
+                )
+            }
+        }
+    }
+
+    if (datePickerOpen) {
+        // Material's DatePickerState anchors on UTC midnight, so we seed with that
+        // and read back the same way to keep the calendar date stable regardless of
+        // the user's local zone.
+        val datePickerState = rememberDatePickerState(
+            initialSelectedDateMillis = date.atTime(0, 0).toInstant(TimeZone.UTC).toEpochMilliseconds(),
+        )
+        DatePickerDialog(
+            onDismissRequest = { datePickerOpen = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    datePickerState.selectedDateMillis?.let { ms ->
+                        date = Instant.fromEpochMilliseconds(ms).toLocalDateTime(TimeZone.UTC).date
+                    }
+                    datePickerOpen = false
+                }) { Text("OK") }
+            },
+            dismissButton = {
+                TextButton(onClick = { datePickerOpen = false }) { Text("Cancel") }
+            },
+        ) {
+            DatePicker(state = datePickerState)
+        }
+    }
+
+    if (timePickerOpen) {
+        val timePickerState = rememberTimePickerState(
+            initialHour = hour,
+            initialMinute = minute,
+            is24Hour = false,
+        )
+        AlertDialog(
+            onDismissRequest = { timePickerOpen = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    hour = timePickerState.hour
+                    minute = timePickerState.minute
+                    timePickerOpen = false
+                }) { Text("OK") }
+            },
+            dismissButton = {
+                TextButton(onClick = { timePickerOpen = false }) { Text("Cancel") }
+            },
+            text = { TimePicker(state = timePickerState) },
+        )
+    }
+}
+
+@Composable
+private fun PickerRow(
+    label: String,
+    value: String,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+            .padding(horizontal = SHEET_SECTION_HORIZONTAL_PADDING.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            color = Color(0xFFB8B8B8),
+            fontSize = 13.sp,
+        )
+        Spacer(modifier = Modifier.weight(1f))
+        Text(
+            text = value,
+            color = Color(0xFFEDEDED),
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Medium,
+        )
+    }
+}
+
+private fun defaultOneTimeStart(tz: TimeZone): Instant {
+    val now = Clock.System.now()
+    val local = now.toLocalDateTime(tz)
+    return local.date.atTime(local.hour, 0).toInstant(tz) + 1.hours
+}
+
+private fun formatDateLabel(date: LocalDate, tz: TimeZone): String {
+    val today = Clock.System.now().toLocalDateTime(tz).date
+    return when (val days = today.daysUntil(date)) {
+        0 -> "Today"
+        1 -> "Tomorrow"
+        -1 -> "Yesterday"
+        else -> {
+            val withinYear = days in -180..180
+            if (withinYear && date.year == today.year) {
+                "${weekdayShort(date.dayOfWeek)}, ${monthShort(date.month)} ${date.day}"
+            } else {
+                "${weekdayShort(date.dayOfWeek)}, ${monthShort(date.month)} ${date.day}, ${date.year}"
+            }
+        }
+    }
+}
+
+private fun formatTimeLabel(hour: Int, minute: Int): String {
+    val h12 = ((hour + 11) % 12) + 1
+    val mm = minute.toString().padStart(2, '0')
+    val suffix = if (hour < 12) "AM" else "PM"
+    return "${h12.toString().padStart(2, '0')}:$mm $suffix"
+}
+
+private fun weekdayShort(day: DayOfWeek): String = when (day) {
+    DayOfWeek.MONDAY -> "Mon"
+    DayOfWeek.TUESDAY -> "Tue"
+    DayOfWeek.WEDNESDAY -> "Wed"
+    DayOfWeek.THURSDAY -> "Thu"
+    DayOfWeek.FRIDAY -> "Fri"
+    DayOfWeek.SATURDAY -> "Sat"
+    DayOfWeek.SUNDAY -> "Sun"
+}
+
+private fun monthShort(month: Month): String = when (month) {
+    Month.JANUARY -> "Jan"
+    Month.FEBRUARY -> "Feb"
+    Month.MARCH -> "Mar"
+    Month.APRIL -> "Apr"
+    Month.MAY -> "May"
+    Month.JUNE -> "Jun"
+    Month.JULY -> "Jul"
+    Month.AUGUST -> "Aug"
+    Month.SEPTEMBER -> "Sep"
+    Month.OCTOBER -> "Oct"
+    Month.NOVEMBER -> "Nov"
+    Month.DECEMBER -> "Dec"
 }
 
 @Composable
