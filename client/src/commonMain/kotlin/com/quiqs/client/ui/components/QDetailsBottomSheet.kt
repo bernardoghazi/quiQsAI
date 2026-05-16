@@ -1189,30 +1189,39 @@ private fun monthShort(month: Month): String = when (month) {
  * `FREQ=MINUTELY|HOURLY;INTERVAL=N;BYHOUR=..;BYDAY=..` with [Alarm.RecurringTime.dtStart]
  * set to the first weekday-matching window start at or after "now".
  *
- * Editing an existing recurring alarm is not yet pre-filled — the form opens at its
- * defaults regardless of [editing]. A future pass can parse the rule back into form
- * state.
+ * Pre-fills from [editing] when it is a [Alarm.RecurringTime] whose rule has
+ * `FREQ=MINUTELY` or `FREQ=HOURLY`; otherwise the form opens at its defaults
+ * (the user is switching alarm type).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun IntervalForm(
-    @Suppress("UNUSED_PARAMETER") editing: Alarm?,
+    editing: Alarm?,
     onBack: () -> Unit,
     onConfirm: (Alarm.RecurringTime) -> Unit,
 ) {
     val tz = TimeZone.currentSystemDefault()
-    var unit by remember { mutableStateOf(IntervalUnit.MINUTES) }
-    var value by remember { mutableStateOf(30) }
-    var windowStartHour by remember { mutableStateOf(9) }
-    var windowEndHour by remember { mutableStateOf(21) }
-    var weekdays by remember { mutableStateOf<Set<DayOfWeek>>(WEEKDAYS_ORDERED.toSet()) }
-    var end by remember { mutableStateOf<EndChoice>(EndChoice.Never) }
+    val seed = (editing as? Alarm.RecurringTime)?.let { parseIntervalAlarm(it, tz) }
+    var unit by remember { mutableStateOf(seed?.unit ?: IntervalUnit.MINUTES) }
+    var value by remember { mutableStateOf(seed?.value ?: 30) }
+    var windowStartHour by remember { mutableStateOf(seed?.windowStartHour ?: 9) }
+    var windowEndHour by remember { mutableStateOf(seed?.windowEndHour ?: 21) }
+    var weekdays by remember {
+        mutableStateOf<Set<DayOfWeek>>(seed?.weekdays ?: WEEKDAYS_ORDERED.toSet())
+    }
+    var end by remember { mutableStateOf<EndChoice>(seed?.end ?: EndChoice.Never) }
 
     var startHourPickerOpen by remember { mutableStateOf(false) }
     var endHourPickerOpen by remember { mutableStateOf(false) }
     var untilDatePickerOpen by remember { mutableStateOf(false) }
 
-    val valueOptions = if (unit == IntervalUnit.MINUTES) MINUTE_OPTIONS else HOUR_OPTIONS
+    // Always include the current value so a pre-filled "custom" interval (e.g. 7 min
+    // from the LLM) still surfaces as a highlighted chip — even when it's outside our
+    // canonical option list.
+    val valueOptions = run {
+        val base = if (unit == IntervalUnit.MINUTES) MINUTE_OPTIONS else HOUR_OPTIONS
+        if (value in base) base else (base + value).sorted()
+    }
     val canSave = weekdays.isNotEmpty() && windowEndHour >= windowStartHour && value >= 1
 
     SheetSection(
@@ -1669,6 +1678,71 @@ private fun computeIntervalDtStart(
         d = d.plus(1, DateTimeUnit.DAY)
     }
     return windowStartToday.toInstant(tz)
+}
+
+private data class IntervalFormDefaults(
+    val unit: IntervalUnit,
+    val value: Int,
+    val windowStartHour: Int,
+    val windowEndHour: Int,
+    val weekdays: Set<DayOfWeek>,
+    val end: EndChoice,
+)
+
+/**
+ * Inverse of [buildIntervalRule]: extracts the interval-form fields from an existing
+ * [Alarm.RecurringTime] so the builder can re-open in the state the user previously
+ * picked. Returns `null` if the rule isn't sub-day (`FREQ` other than `MINUTELY` /
+ * `HOURLY`), which signals the user is changing alarm type and the form should fall
+ * back to defaults.
+ */
+private fun parseIntervalAlarm(alarm: Alarm.RecurringTime, tz: TimeZone): IntervalFormDefaults? {
+    val parts = alarm.rule
+        .split(';')
+        .mapNotNull { piece ->
+            val eq = piece.indexOf('=')
+            if (eq <= 0) null
+            else piece.substring(0, eq).trim().uppercase() to piece.substring(eq + 1).trim()
+        }
+        .toMap()
+
+    val unit = when (parts["FREQ"]?.uppercase()) {
+        "MINUTELY" -> IntervalUnit.MINUTES
+        "HOURLY" -> IntervalUnit.HOURS
+        else -> return null
+    }
+    val value = parts["INTERVAL"]?.toIntOrNull()?.coerceAtLeast(1) ?: 1
+    val byHour = parts["BYHOUR"]?.split(',')?.mapNotNull { it.toIntOrNull() }
+    val windowStartHour = byHour?.minOrNull() ?: 9
+    val windowEndHour = byHour?.maxOrNull() ?: 21
+    val weekdays = parts["BYDAY"]
+        ?.split(',')
+        ?.mapNotNull { it.toDayOfWeekIgnoringOrdinal() }
+        ?.toSet()
+        ?: WEEKDAYS_ORDERED.toSet()
+    val count = alarm.count
+    val until = alarm.until
+    val end = when {
+        count != null -> EndChoice.AfterCount(count)
+        until != null -> EndChoice.OnDate(until.toLocalDateTime(tz).date)
+        else -> EndChoice.Never
+    }
+    return IntervalFormDefaults(unit, value, windowStartHour, windowEndHour, weekdays, end)
+}
+
+private fun String.toDayOfWeekIgnoringOrdinal(): DayOfWeek? {
+    val trimmed = trim().uppercase()
+    if (trimmed.length < 2) return null
+    return when (trimmed.takeLast(2)) {
+        "MO" -> DayOfWeek.MONDAY
+        "TU" -> DayOfWeek.TUESDAY
+        "WE" -> DayOfWeek.WEDNESDAY
+        "TH" -> DayOfWeek.THURSDAY
+        "FR" -> DayOfWeek.FRIDAY
+        "SA" -> DayOfWeek.SATURDAY
+        "SU" -> DayOfWeek.SUNDAY
+        else -> null
+    }
 }
 
 private fun buildIntervalRule(
