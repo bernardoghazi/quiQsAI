@@ -32,13 +32,24 @@ data class QFilterSort(
     val sortBy: SortField = SortField.CREATED_AT,
     val sortDir: SortDir = SortDir.DESC,
 ) {
+    /**
+     * Predicate on a Q's [Alarm] shape. [ANY] and [ANY_SET] are easy to confuse:
+     * [ANY] means "don't filter on alarms at all" (the default), while [ANY_SET]
+     * means "keep only Qs that have at least one alarm of any kind".
+     */
     @Serializable
     enum class AlarmFilter {
+        /** Don't filter on alarms — both alarmed and alarm-less Qs pass. */
         @SerialName("any") ANY,
+        /** Keep only Qs that have no alarms. */
         @SerialName("none") NONE,
+        /** Keep only Qs that have at least one alarm (any kind). */
         @SerialName("any_set") ANY_SET,
+        /** Keep only Qs that have a recurring-time alarm. */
         @SerialName("recurring") RECURRING,
+        /** Keep only Qs that have a one-off-time alarm. */
         @SerialName("one_off") ONE_OFF,
+        /** Keep only Qs that have a geofence alarm. */
         @SerialName("geofence") GEOFENCE,
     }
 

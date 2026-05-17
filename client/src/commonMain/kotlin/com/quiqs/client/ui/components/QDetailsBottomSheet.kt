@@ -1620,6 +1620,11 @@ private enum class CalendarFreq { DAILY, WEEKLY, MONTHLY, YEARLY }
 
 private enum class MonthlyMode { DAY_OF_MONTH, NTH_WEEKDAY }
 
+/**
+ * Ordinal prefix used for monthly/yearly Nth-weekday rules. The [rfcValue] is the
+ * integer that goes in front of the day code in a BYDAY entry — e.g. `2SU` = second
+ * Sunday, `-1FR` = last Friday — per RFC 5545 §3.3.10.
+ */
 private enum class NthOrdinal(val rfcValue: Int, val label: String) {
     FIRST(1, "first"),
     SECOND(2, "second"),
