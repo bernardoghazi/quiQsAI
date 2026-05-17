@@ -83,6 +83,14 @@ class AlarmReceiver : BroadcastReceiver() {
                     Log.w(TAG, "handleFire($qId): no alarm on Q — dropping")
                     return@launch
                 }
+                // Safety net: a Q marked done after we scheduled the wakeup (or after we
+                // lost track of a side reminder across process restart) shouldn't surface
+                // a notification. Skip without mutating state or rescheduling — the next
+                // sync from a future reopen will rebuild the schedule.
+                if (q.completed) {
+                    Log.d(TAG, "handleFire($qId): Q is completed — dropping notification")
+                    return@launch
+                }
                 Log.d(TAG, "handleFire($qId, side=$isSideReminder): posting notification for alarm=$alarm")
                 postNotification(context, q)
                 if (isSideReminder) return@launch

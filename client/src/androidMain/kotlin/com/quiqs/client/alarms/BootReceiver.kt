@@ -35,6 +35,10 @@ class BootReceiver : BroadcastReceiver() {
                 val qs = app.repository.getAll()
                 var scheduled = 0
                 for (q in qs) {
+                    // Completed Qs intentionally don't get their alarms re-armed —
+                    // marking done disables future wakeups (alarms aren't deleted, so a
+                    // reopen will rebuild the schedule via the repository).
+                    if (q.completed) continue
                     val alarm = q.alarms.firstOrNull() ?: continue
                     app.alarmScheduler.sync(q.id, alarm)
                     scheduled++

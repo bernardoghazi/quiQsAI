@@ -34,8 +34,20 @@ class AndroidAlarmScheduler(context: Context) : AlarmScheduler {
     private val appContext = context.applicationContext
     private val alarmManager = appContext.getSystemService(Context.ALARM_SERVICE) as AlarmManager
 
+    /**
+     * Per-Q set of outstanding side-reminder fire instants. Lets us cancel them
+     * alongside the main schedule in [sync] — AlarmManager itself has no enumeration API.
+     *
+     * In-memory only by design: side reminders survive AlarmManager but not the process,
+     * so this map only tracks the ones scheduled in this process. Stale side reminders
+     * left behind by a previous process are caught by [AlarmReceiver]'s `completed`
+     * short-circuit at fire time.
+     */
+    private val sideReminders = mutableMapOf<Uuid, MutableSet<Long>>()
+
     override fun sync(qId: Uuid, alarm: Alarm?) {
         cancel(qId)
+        cancelSideReminders(qId)
         val triggerAt = alarm?.nextFireInstant()
         if (triggerAt == null) {
             Log.d(TAG, "sync($qId): no future fire instant for alarm=$alarm — cancelled only")
@@ -50,6 +62,29 @@ class AndroidAlarmScheduler(context: Context) : AlarmScheduler {
             alarmManager.cancel(pi)
             pi.cancel()
         }
+    }
+
+    @Synchronized
+    private fun cancelSideReminders(qId: Uuid) {
+        val tracked = sideReminders.remove(qId) ?: return
+        for (fireAtMs in tracked) {
+            val code = sideReminderRequestCode(qId, fireAtMs)
+            val intent = Intent(appContext, AlarmReceiver::class.java).apply {
+                action = AlarmReceiver.ACTION_FIRE_SIDE_REMINDER
+                putExtra(AlarmReceiver.EXTRA_Q_ID, qId.toString())
+            }
+            val pi = PendingIntent.getBroadcast(
+                appContext,
+                code,
+                intent,
+                PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE,
+            )
+            if (pi != null) {
+                alarmManager.cancel(pi)
+                pi.cancel()
+            }
+        }
+        Log.d(TAG, "cancelSideReminders($qId): cancelled ${tracked.size}")
     }
 
     private fun scheduleExact(qId: Uuid, triggerAt: Instant) {
@@ -68,18 +103,25 @@ class AndroidAlarmScheduler(context: Context) : AlarmScheduler {
      * than the second overwriting the first.
      */
     fun scheduleSideReminder(qId: Uuid, fireAt: Instant) {
+        val fireAtMs = fireAt.toEpochMilliseconds()
         val intent = Intent(appContext, AlarmReceiver::class.java).apply {
             action = AlarmReceiver.ACTION_FIRE_SIDE_REMINDER
             putExtra(AlarmReceiver.EXTRA_Q_ID, qId.toString())
         }
-        val code = sideReminderRequestCode(qId, fireAt)
+        val code = sideReminderRequestCode(qId, fireAtMs)
         val pi = PendingIntent.getBroadcast(
             appContext,
             code,
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
+        recordSideReminder(qId, fireAtMs)
         scheduleAt(pi, fireAt, label = "scheduleSideReminder($qId)")
+    }
+
+    @Synchronized
+    private fun recordSideReminder(qId: Uuid, fireAtMs: Long) {
+        sideReminders.getOrPut(qId) { mutableSetOf() }.add(fireAtMs)
     }
 
     private fun scheduleAt(pi: PendingIntent, triggerAt: Instant, label: String) {
@@ -97,8 +139,8 @@ class AndroidAlarmScheduler(context: Context) : AlarmScheduler {
         }
     }
 
-    private fun sideReminderRequestCode(qId: Uuid, fireAt: Instant): Int =
-        (qId.toString() + "/side/" + fireAt.toEpochMilliseconds()).hashCode()
+    private fun sideReminderRequestCode(qId: Uuid, fireAtMs: Long): Int =
+        (qId.toString() + "/side/" + fireAtMs).hashCode()
 
     private fun pendingIntent(qId: Uuid, flags: Int): PendingIntent? {
         val intent = Intent(appContext, AlarmReceiver::class.java).apply {

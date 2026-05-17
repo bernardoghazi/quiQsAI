@@ -144,7 +144,10 @@ class SqlDelightQRepository(
             createdAt = q.createdAt.toEpochMilliseconds(),
             updatedAt = q.updatedAt.toEpochMilliseconds(),
         )
-        alarmScheduler.sync(q.id, q.alarms.firstOrNull())
+        // A Q created already completed (rare — the LLM dispatcher allows it) doesn't get
+        // its alarm armed; the sync call still runs so any stale schedule under this id
+        // is cleared.
+        alarmScheduler.sync(q.id, if (q.completed) null else q.alarms.firstOrNull())
         return q
     }
 
@@ -183,10 +186,14 @@ class SqlDelightQRepository(
                 updatedAt = now.toEpochMilliseconds(),
             )
         )
-        // Only reconcile the OS schedule when the caller actually touched alarms — other
-        // field-only updates leave the existing schedule untouched.
-        if (alarms != null) {
-            alarmScheduler.sync(updated.id, updated.alarms.firstOrNull())
+        // Re-sync the OS schedule when the caller touched alarms, OR when completion
+        // transitioned. Marking a Q done clears its alarms (passing null cancels every
+        // pending wakeup); reopening re-arms the existing alarm. Field-only updates that
+        // don't touch either still leave the schedule alone.
+        val completionChanged = completed != null && (existing.completed != 0L) != updated.completed
+        if (alarms != null || completionChanged) {
+            val effective = if (updated.completed) null else updated.alarms.firstOrNull()
+            alarmScheduler.sync(updated.id, effective)
         }
         return updated
     }
