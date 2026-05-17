@@ -1,10 +1,13 @@
 package com.quiqs.client
 
 import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import com.quiqs.client.audio.createPlayerProvider
 import com.quiqs.client.audio.createRecorderProvider
 import kotlinx.coroutines.CompletableDeferred
@@ -31,8 +34,18 @@ class MainActivity : ComponentActivity() {
         pendingPermission = null
     }
 
+    /**
+     * Fire-and-forget POST_NOTIFICATIONS request. Separate from [permissionLauncher] so
+     * a notification prompt that's open while the user holds the mic doesn't collide
+     * with the RECORD_AUDIO flow.
+     */
+    private val notificationsLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { /* result handled by the system; alarm notifications no-op if denied */ }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        maybeRequestNotificationsPermission()
         val repository = createQRepository(applicationContext)
         val agentProvider = createAgentProvider(applicationContext, repository)
         lifecycle.addObserver(
@@ -53,5 +66,22 @@ class MainActivity : ComponentActivity() {
         )
         val playerProvider = createPlayerProvider(context = applicationContext)
         setContent { App(repository, agentProvider, recorderProvider, playerProvider) }
+    }
+
+    /**
+     * On Android 13+ alarm notifications need `POST_NOTIFICATIONS`. We ask at launch so
+     * the prompt appears before the user sets their first alarm. Android's system-level
+     * rate limiting handles repeated calls — after a second denial the prompt is
+     * silently suppressed and the user must enable it from Settings.
+     */
+    private fun maybeRequestNotificationsPermission() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        val granted = ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.POST_NOTIFICATIONS,
+        ) == PackageManager.PERMISSION_GRANTED
+        if (!granted) {
+            notificationsLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
     }
 }
