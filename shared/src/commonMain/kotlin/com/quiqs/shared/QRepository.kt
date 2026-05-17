@@ -89,7 +89,10 @@ private val alarmsSerializer = ListSerializer(Alarm.serializer())
  * Storage shape: each Q is a single row; [Q.tags] and [Q.alarms] are stored as
  * JSON strings so schema changes to those shapes don't require migrations.
  */
-class SqlDelightQRepository(driver: SqlDriver) : QRepository {
+class SqlDelightQRepository(
+    driver: SqlDriver,
+    private val alarmScheduler: AlarmScheduler = NoopAlarmScheduler,
+) : QRepository {
 
     private val db = QDatabase(driver)
     private val queries = db.qQueries
@@ -141,6 +144,7 @@ class SqlDelightQRepository(driver: SqlDriver) : QRepository {
             createdAt = q.createdAt.toEpochMilliseconds(),
             updatedAt = q.updatedAt.toEpochMilliseconds(),
         )
+        alarmScheduler.sync(q.id, q.alarms.firstOrNull())
         return q
     }
 
@@ -169,7 +173,7 @@ class SqlDelightQRepository(driver: SqlDriver) : QRepository {
             updatedAt = now.toEpochMilliseconds(),
             id = existing.id,
         )
-        return toDomain(
+        val updated = toDomain(
             existing.copy(
                 text = newText,
                 tagsJson = newTagsJson,
@@ -179,6 +183,12 @@ class SqlDelightQRepository(driver: SqlDriver) : QRepository {
                 updatedAt = now.toEpochMilliseconds(),
             )
         )
+        // Only reconcile the OS schedule when the caller actually touched alarms — other
+        // field-only updates leave the existing schedule untouched.
+        if (alarms != null) {
+            alarmScheduler.sync(updated.id, updated.alarms.firstOrNull())
+        }
+        return updated
     }
 
     override suspend fun setVoiceNote(id: Uuid, path: String?): Q? {
@@ -204,6 +214,7 @@ class SqlDelightQRepository(driver: SqlDriver) : QRepository {
 
     override suspend fun delete(id: Uuid) {
         queries.deleteById(id.toString())
+        alarmScheduler.sync(id, null)
     }
 
     /** Maps a raw SQLDelight row to the domain [Q], decoding the JSON-encoded columns. */

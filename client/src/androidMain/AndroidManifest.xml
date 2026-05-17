@@ -7,6 +7,17 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
 
+    <!-- Alarms: USE_EXACT_ALARM is auto-granted for apps Play Store classifies as
+         alarm/calendar (33+). On 31-32 we fall back to SCHEDULE_EXACT_ALARM (user-
+         revocable; AndroidAlarmScheduler degrades to inexact if denied). -->
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"
+        android:maxSdkVersion="32" />
+    <!-- Required on Android 13+ to post the alarm notification. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Re-schedule pending alarms after a reboot (AlarmManager doesn't persist). -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
     <application
         android:label="quiQs"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
@@ -21,5 +32,9 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <receiver
+            android:name=".alarms.AlarmReceiver"
+            android:exported="false" />
     </application>
 </manifest>
