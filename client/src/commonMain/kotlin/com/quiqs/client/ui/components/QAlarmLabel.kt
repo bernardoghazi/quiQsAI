@@ -46,12 +46,14 @@ fun QAlarmLabel(
             value = Clock.System.now()
         }
     }
+    val isFired = alarm is Alarm.OneOffTime && alarm.firedAt != null
+    val resolvedColor = if (isFired) FIRED_ALARM_COLOR else color
     Row(
         modifier = modifier,
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        QText(text = alarm.formatLabel(now), role = QTextRole.Alarm, color = color)
+        QText(text = alarm.formatLabel(now), role = QTextRole.Alarm, color = resolvedColor)
         if (alarm is Alarm.RecurringTime) {
             Icon(
                 imageVector = RepeatIcon,
@@ -62,6 +64,8 @@ fun QAlarmLabel(
         }
     }
 }
+
+private val FIRED_ALARM_COLOR = Color(0XFF5C5C5C)
 
 /**
  * Renders the alarm as the same kind of short label the list cell uses. For recurring

@@ -18,10 +18,16 @@ sealed interface Alarm {
      * Fires exactly once at an absolute instant in time.
      *
      * @property at ISO-8601 moment when the alarm fires.
+     * @property firedAt Set once the alarm has actually fired and the notification was
+     *           posted. `null` while still pending. Internal state — the LLM never emits
+     *           it; only the runtime sets it from the alarm receiver.
      */
     @Serializable
     @SerialName("oneOffTime")
-    data class OneOffTime(val at: Instant) : Alarm
+    data class OneOffTime(
+        val at: Instant,
+        val firedAt: Instant? = null,
+    ) : Alarm
 
     /**
      * Fires on a recurring schedule described by an iCalendar RFC 5545 RRULE.

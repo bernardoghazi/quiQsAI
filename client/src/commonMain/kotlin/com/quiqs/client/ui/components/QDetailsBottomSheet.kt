@@ -696,17 +696,21 @@ private fun AlarmPill(
     onClick: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val isFired = alarm is Alarm.OneOffTime && alarm.firedAt != null
+    val background = if (isFired) Color(0xFF0E0E0E) else Color(0xFF161616)
+    val textColor = if (isFired) Color(0xFF7A7A7A) else Color.White
+    val dismissTint = if (isFired) Color(0xFF5C5C5C) else Color(0xFFB8B8B8)
     Row(
         modifier = Modifier
             .clip(RoundedCornerShape(20))
-            .background(Color(0xFF161616))
+            .background(background)
             .clickable { onClick() }
             .padding(horizontal = 12.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        QAlarmLabel(alarm = alarm, color = Color.White)
-        DismissIcon(tint = Color(0xFFB8B8B8), onClick = onDismiss)
+        QAlarmLabel(alarm = alarm, color = textColor)
+        DismissIcon(tint = dismissTint, onClick = onDismiss)
     }
 }
 
