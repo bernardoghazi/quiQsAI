@@ -1,12 +1,16 @@
 package com.quiqs.client
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 import com.quiqs.client.audio.createPlayerProvider
 import com.quiqs.client.audio.createRecorderProvider
@@ -43,8 +47,16 @@ class MainActivity : ComponentActivity() {
         ActivityResultContracts.RequestPermission(),
     ) { /* result handled by the system; alarm notifications no-op if denied */ }
 
+    /**
+     * Holds the Q the alarm notification asked us to open. Read by Compose so changes
+     * via [onNewIntent] (Activity reused while in background) propagate to [App] and
+     * trigger the bottom-sheet open. Cleared by the consumer once the sheet is opened.
+     */
+    private var deepLinkQId by mutableStateOf<String?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        deepLinkQId = intent?.getStringExtra(EXTRA_OPEN_Q_ID)
         maybeRequestNotificationsPermission()
         val repository = createQRepository(applicationContext)
         val agentProvider = createAgentProvider(applicationContext, repository)
@@ -65,7 +77,22 @@ class MainActivity : ComponentActivity() {
             },
         )
         val playerProvider = createPlayerProvider(context = applicationContext)
-        setContent { App(repository, agentProvider, recorderProvider, playerProvider) }
+        setContent {
+            App(
+                repository = repository,
+                agentProvider = agentProvider,
+                recorderProvider = recorderProvider,
+                playerProvider = playerProvider,
+                initialOpenQId = deepLinkQId,
+                onInitialOpenQIdConsumed = { deepLinkQId = null },
+            )
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        intent.getStringExtra(EXTRA_OPEN_Q_ID)?.let { deepLinkQId = it }
     }
 
     /**
@@ -83,5 +110,10 @@ class MainActivity : ComponentActivity() {
         if (!granted) {
             notificationsLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
+    }
+
+    companion object {
+        /** Intent extra: Uuid string of the Q whose detail sheet should open at launch. */
+        const val EXTRA_OPEN_Q_ID = "com.quiqs.client.EXTRA_OPEN_Q_ID"
     }
 }

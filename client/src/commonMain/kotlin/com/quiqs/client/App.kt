@@ -8,6 +8,7 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -43,9 +44,17 @@ fun App(
     agentProvider: AgentProvider = NoAgent,
     recorderProvider: RecorderProvider = NoRecorder,
     playerProvider: PlayerProvider = NoPlayer,
+    initialOpenQId: String? = null,
+    onInitialOpenQIdConsumed: () -> Unit = {},
 ) {
     var route by remember { mutableStateOf<Route>(Route.List) }
     var filterSort by remember { mutableStateOf(QFilterSort()) }
+    // Notification deep links target the list screen's bottom sheet, so route back to
+    // List when a new deep link arrives — otherwise the sheet would never get rendered
+    // if the user happens to be on the prompt or detail route.
+    LaunchedEffect(initialOpenQId) {
+        if (initialOpenQId != null) route = Route.List
+    }
     val isDark = isSystemInDarkTheme()
     val scheme = if (isDark) QuiqsDarkColorScheme else QuiqsColorScheme
     val backgroundBrush = if (isDark) QuiqsDarkBackgroundBrush else QuiqsBackgroundBrush
@@ -59,6 +68,8 @@ fun App(
                     agentProvider = agentProvider,
                     recorderProvider = recorderProvider,
                     playerProvider = playerProvider,
+                    initialOpenQId = initialOpenQId,
+                    onInitialOpenQIdConsumed = onInitialOpenQIdConsumed,
                     onQueryQs = { route = Route.Prompt(PromptMode.Query) },
                     onFilterSortApplied = { spec -> filterSort = spec },
                     onClearFilterSort = { filterSort = QFilterSort() },

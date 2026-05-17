@@ -170,7 +170,7 @@ class AlarmReceiver : BroadcastReceiver() {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setAutoCancel(true)
-            .setContentIntent(openAppIntent(context))
+            .setContentIntent(openAppIntent(context, q.id))
             .addAction(0, "Snooze 15m", actionIntent(context, q.id, ACTION_SNOOZE_15M))
             .addAction(0, "Snooze 1h", actionIntent(context, q.id, ACTION_SNOOZE_1H))
             .addAction(0, "Snooze 1d", actionIntent(context, q.id, ACTION_SNOOZE_1D))
@@ -196,13 +196,18 @@ class AlarmReceiver : BroadcastReceiver() {
         )
     }
 
-    private fun openAppIntent(context: Context): PendingIntent {
+    private fun openAppIntent(context: Context, qId: Uuid): PendingIntent {
         val intent = Intent(context, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            // SINGLE_TOP pairs with the manifest launchMode so an already-running
+            // MainActivity receives this via onNewIntent rather than being recreated.
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            putExtra(MainActivity.EXTRA_OPEN_Q_ID, qId.toString())
         }
+        // Per-Q request code so two pending notifications for different Qs don't end up
+        // sharing the same PendingIntent and losing their qId extras.
         return PendingIntent.getActivity(
             context,
-            0,
+            qId.requestCode(),
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )

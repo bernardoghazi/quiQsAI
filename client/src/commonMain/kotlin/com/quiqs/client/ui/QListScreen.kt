@@ -40,6 +40,7 @@ import com.quiqs.client.ui.components.QCard
 import com.quiqs.client.ui.components.QDetailsBottomSheet
 import com.quiqs.client.ui.components.QDraft
 import com.quiqs.client.ui.components.QVoicePromptDialog
+import com.quiqs.shared.Q
 import com.quiqs.shared.QFilterSort
 import com.quiqs.shared.QRepository
 import com.quiqs.shared.applyTo
@@ -80,6 +81,8 @@ fun QListScreen(
     onQueryQs: () -> Unit,
     onFilterSortApplied: (QFilterSort) -> Unit,
     onClearFilterSort: () -> Unit,
+    initialOpenQId: String? = null,
+    onInitialOpenQIdConsumed: () -> Unit = {},
 ) {
     val all by repository.observeAll().collectAsState(initial = emptyList())
     val qs = remember(all, filterSort) { filterSort.applyTo(all) }
@@ -99,6 +102,45 @@ fun QListScreen(
     // seeded from that Q) or the bottom bar's `+` (empty draft); cleared on dismiss
     // (scrim tap or back press), discarding anything the user typed/recorded.
     var sheetRequest by remember { mutableStateOf<SheetRequest?>(null) }
+
+    // Shared builder for the edit sheet used by both card tap and notification deep
+    // link — keeps the save logic in one place.
+    val makeEditRequest: (Q) -> SheetRequest = { q ->
+        SheetRequest(
+            initial = QDraft(
+                text = q.text,
+                voiceNotePath = q.voiceNotePath,
+                alarms = q.alarms,
+                priority = q.priority,
+                tags = q.tags,
+            ),
+            onSave = { draft ->
+                scope.launch {
+                    repository.update(
+                        id = q.id,
+                        text = draft.text,
+                        tags = draft.tags,
+                        alarms = draft.alarms,
+                        priority = draft.priority,
+                    )
+                    if (draft.voiceNotePath != q.voiceNotePath) {
+                        repository.setVoiceNote(q.id, draft.voiceNotePath)
+                    }
+                    sheetRequest = null
+                }
+            },
+        )
+    }
+
+    // Open the bottom sheet for the deep-linked Q as soon as it lands in `all`. The
+    // unfiltered list is used on purpose — the current filter shouldn't hide a Q the
+    // user explicitly tapped a notification to view.
+    LaunchedEffect(initialOpenQId, all) {
+        if (initialOpenQId == null) return@LaunchedEffect
+        val q = all.firstOrNull { it.id.toString() == initialOpenQId } ?: return@LaunchedEffect
+        sheetRequest = makeEditRequest(q)
+        onInitialOpenQIdConsumed()
+    }
 
     Scaffold(
         containerColor = Color.Transparent,
@@ -212,32 +254,7 @@ fun QListScreen(
                         onCheckedChange = { checked ->
                             scope.launch { repository.update(q.id, completed = checked) }
                         },
-                        onClick = {
-                            sheetRequest = SheetRequest(
-                                initial = QDraft(
-                                    text = q.text,
-                                    voiceNotePath = q.voiceNotePath,
-                                    alarms = q.alarms,
-                                    priority = q.priority,
-                                    tags = q.tags,
-                                ),
-                                onSave = { draft ->
-                                    scope.launch {
-                                        repository.update(
-                                            id = q.id,
-                                            text = draft.text,
-                                            tags = draft.tags,
-                                            alarms = draft.alarms,
-                                            priority = draft.priority,
-                                        )
-                                        if (draft.voiceNotePath != q.voiceNotePath) {
-                                            repository.setVoiceNote(q.id, draft.voiceNotePath)
-                                        }
-                                        sheetRequest = null
-                                    }
-                                },
-                            )
-                        },
+                        onClick = { sheetRequest = makeEditRequest(q) },
                     )
                 }
             }
