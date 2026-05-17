@@ -6,6 +6,7 @@ import android.app.AlarmManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.util.Log
 import com.quiqs.shared.Alarm
 import com.quiqs.shared.AlarmScheduler
 import com.quiqs.shared.nextRecurringInstant
@@ -35,7 +36,11 @@ class AndroidAlarmScheduler(context: Context) : AlarmScheduler {
 
     override fun sync(qId: Uuid, alarm: Alarm?) {
         cancel(qId)
-        val triggerAt = alarm?.nextFireInstant() ?: return
+        val triggerAt = alarm?.nextFireInstant()
+        if (triggerAt == null) {
+            Log.d(TAG, "sync($qId): no future fire instant for alarm=$alarm — cancelled only")
+            return
+        }
         scheduleExact(qId, triggerAt)
     }
 
@@ -50,17 +55,50 @@ class AndroidAlarmScheduler(context: Context) : AlarmScheduler {
     private fun scheduleExact(qId: Uuid, triggerAt: Instant) {
         val pi = pendingIntent(qId, flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
             ?: return
+        scheduleAt(pi, triggerAt, label = "sync($qId)")
+    }
+
+    /**
+     * Schedules a one-off "side reminder" wakeup that re-fires the notification for
+     * [qId] at [fireAt]. Used by the recurring-alarm snooze path: the recurrence itself
+     * stays untouched, but the user gets an extra reminder at the snoozed time.
+     *
+     * Each call uses a unique PendingIntent (keyed on `qId + fireAt`) so stacked snoozes
+     * — e.g. the user hits "+15m" twice — produce two distinct side reminders rather
+     * than the second overwriting the first.
+     */
+    fun scheduleSideReminder(qId: Uuid, fireAt: Instant) {
+        val intent = Intent(appContext, AlarmReceiver::class.java).apply {
+            action = AlarmReceiver.ACTION_FIRE_SIDE_REMINDER
+            putExtra(AlarmReceiver.EXTRA_Q_ID, qId.toString())
+        }
+        val code = sideReminderRequestCode(qId, fireAt)
+        val pi = PendingIntent.getBroadcast(
+            appContext,
+            code,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        scheduleAt(pi, fireAt, label = "scheduleSideReminder($qId)")
+    }
+
+    private fun scheduleAt(pi: PendingIntent, triggerAt: Instant, label: String) {
         val triggerMs = triggerAt.toEpochMilliseconds()
         try {
             alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerMs, pi)
-        } catch (_: SecurityException) {
+            Log.d(TAG, "$label: scheduled EXACT for $triggerAt (in ${triggerMs - System.currentTimeMillis()}ms)")
+        } catch (e: SecurityException) {
             // Exact-alarm permission revoked (only reachable on API 31-32 since
             // USE_EXACT_ALARM is auto-granted for our app category). Fall back to an
             // inexact wakeup so the user still gets a notification, just not at the
             // exact second.
             alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerMs, pi)
+            Log.w(TAG, "$label: exact alarm denied (${e.message}); fell back to inexact for $triggerAt")
         }
     }
+
+    private fun sideReminderRequestCode(qId: Uuid, fireAt: Instant): Int =
+        (qId.toString() + "/side/" + fireAt.toEpochMilliseconds()).hashCode()
 
     private fun pendingIntent(qId: Uuid, flags: Int): PendingIntent? {
         val intent = Intent(appContext, AlarmReceiver::class.java).apply {
@@ -86,3 +124,5 @@ internal fun Alarm.nextFireInstant(now: Instant = Clock.System.now()): Instant? 
 
 /** Stable per-Q PendingIntent request code derived from the Uuid string. */
 internal fun Uuid.requestCode(): Int = toString().hashCode()
+
+private const val TAG = "quiqs/alarms"
