@@ -7,6 +7,7 @@ coroutines = "1.9.0"
 serialization = "1.9.0"
 logback = "1.5.12"
 androidx-activity = "1.9.3"
+androidx-core = "1.13.1"
 sqldelight = "2.0.2"
 kotlinx-datetime = "0.7.0"
 litertlm = "0.10.2"
@@ -35,6 +36,7 @@ ktor-client-darwin = { module = "io.ktor:ktor-client-darwin", version.ref = "kto
 logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
 
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidx-activity" }
+androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "androidx-core" }
 
 sqldelight-runtime = { module = "app.cash.sqldelight:runtime", version.ref = "sqldelight" }
 sqldelight-coroutines-extensions = { module = "app.cash.sqldelight:coroutines-extensions", version.ref = "sqldelight" }
