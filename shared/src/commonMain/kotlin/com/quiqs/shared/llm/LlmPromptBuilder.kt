@@ -107,21 +107,8 @@ class LlmPromptBuilder(
         val now = clock()
         val offset = timeZone.offsetAt(now)
         val localNow = now.toLocalDateTime(timeZone)
-        // Format the prelude time at second precision (no nanoseconds). LocalDateTime's
-        // default toString includes any sub-second component the clock happens to carry,
-        // and the model would mirror that into the alarms it emits — producing instants
-        // padded with fractional-second digits the downstream serializer chokes on.
-        val isoNow = buildString {
-            append(localNow.date)
-            append('T')
-            append(localNow.hour.toString().padStart(2, '0'))
-            append(':')
-            append(localNow.minute.toString().padStart(2, '0'))
-            append(':')
-            append(localNow.second.toString().padStart(2, '0'))
-        }
         return buildString {
-            appendLine("Current time: $isoNow$offset")
+            appendLine("Current time: $localNow$offset")
             appendLine("Time zone: $timeZone")
             appendLine()
             userSection()
@@ -138,34 +125,14 @@ class LlmPromptBuilder(
             "The user's prompt is provided as an audio attachment. Transcribe it silently and treat the transcription as the user prompt."
 
         private val ALARMS_AND_TIME_RULES = """
-            Alarms (every date-time is a string exactly like "2026-05-17T17:00:00-03:00"):
-              {"type":"oneOffTime","at":"2026-05-17T17:00:00-03:00"}
-              {"type":"recurringTime","rule":"FREQ=DAILY","dtStart":"2026-05-17T08:00:00-03:00","until":"2026-12-31T23:00:00-03:00","count":null}
-              {"type":"geofence","latitude":<num>,"longitude":<num>,"radiusMeters":<num>,"activeUntil":"2026-12-31T23:00:00-03:00"}
+            Alarms:
+              {"type":"oneOffTime","at":"<iso8601>"}
+              {"type":"recurringTime","rule":"<RRULE>","dtStart":"<iso8601>","until":"<iso8601|null>","count":<int|null>}
+              {"type":"geofence","latitude":<num>,"longitude":<num>,"radiusMeters":<num>,"activeUntil":"<iso8601|null>"}
 
-            Time format (STRICT — copy this layout character-for-character):
-            - Each date-time is EXACTLY 25 characters in this order:
-              `YYYY-MM-DD` (4-digit year, hyphen, 2-digit month, hyphen, 2-digit day)
-              then literal `T`
-              then `HH:MM:SS` (2-digit hour 00–23, colon, 2-digit minute, colon, `00` for seconds)
-              then offset `±HH:MM` from now+tz (e.g. `-03:00`, `+05:30`; never `Z` / UTC).
-            - Hyphens and colons are REQUIRED separators. Do not concatenate digits.
-            - Do not add fractional seconds, nanoseconds, or any extra digits anywhere.
-
-            Wrong (NEVER emit):
-              "20260518T160000-0300"      (missing hyphens, colons)
-              "202020518T160000-0300"     (year has too many digits)
-              "2026-05-18T17:00:00.000-03:00"  (fractional seconds)
-              "17:00:00-03:00"            (missing date)
-              "2026-05-18T17:00:00Z"      (UTC — must use local offset)
-            Right (always like these):
-              "2026-05-18T17:00:00-03:00"
-              "2026-12-31T09:30:00+05:30"
-
-            Time resolution:
-            - Resolve relative times against the "Current time" provided in the user prompt.
-            - Example: Current time is "2026-05-17T08:30:00-03:00". User says "5pm today" → "2026-05-17T17:00:00-03:00".
-            - Example: Current time is "2026-05-17T08:30:00-03:00". User says "tomorrow at 9am" → "2026-05-18T09:00:00-03:00".
+            Time rules:
+            - Resolve relative times with the given now+tz.
+            - Emit instants in the given tz as ISO-8601 with offset, not UTC. Example: "5pm" with offset 03:00 → "17:00:00-03:00".
 
             Recurring alarm rules:
             - `dtStart` is REQUIRED — the first firing of the rule. The rule expands from there.
@@ -286,15 +253,15 @@ class LlmPromptBuilder(
               "me lembra de".
             - Capitalize the first word.
 
-            Examples (assume Current time is "2026-05-17T08:30:00-03:00"):
+            Examples:
               "Cue me at 5pm to pick up Stella"
-              → {"type":"create","text":"Pick up Stella","tags":[],"alarms":[{"type":"oneOffTime","at":"2026-05-17T17:00:00-03:00"}],"priority":"medium"}
+              → {"type":"create","text":"Pick up Stella","tags":[],"alarms":[{"type":"oneOffTime","at":"<resolved>"}],"priority":"medium"}
 
               "Urgent: call the doctor"
               → {"type":"create","text":"Call the doctor","tags":[],"alarms":[],"priority":"high"}
 
               "Remind me to drink water every 2 hours from 8am to 8pm on weekdays"
-              → {"type":"create","text":"Drink water","tags":[],"alarms":[{"type":"recurringTime","rule":"FREQ=HOURLY;INTERVAL=2;BYHOUR=8,9,10,11,12,13,14,15,16,17,18,19,20;BYDAY=MO,TU,WE,TH,FR","dtStart":"2026-05-17T08:00:00-03:00","until":null,"count":null}],"priority":"medium"}
+              → {"type":"create","text":"Drink water","tags":[],"alarms":[{"type":"recurringTime","rule":"FREQ=HOURLY;INTERVAL=2;BYHOUR=8,9,10,11,12,13,14,15,16,17,18,19,20;BYDAY=MO,TU,WE,TH,FR","dtStart":"<resolved>","until":null,"count":null}],"priority":"medium"}
 
               "show only high priority"
               → {"type":"filterSort","spec":{"priorities":["high"]}}
