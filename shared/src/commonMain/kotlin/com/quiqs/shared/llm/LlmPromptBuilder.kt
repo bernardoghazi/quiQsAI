@@ -138,6 +138,11 @@ class LlmPromptBuilder(
             - `dtStart` is REQUIRED.
             - `until` and `count` are mutually exclusive. Both null means recur forever.
             - The `rule` is the RRULE body only. Do NOT put DTSTART, UNTIL, or COUNT inside it.
+            - Supported RRULE parts: FREQ (MINUTELY|HOURLY|DAILY|WEEKLY|MONTHLY|YEARLY);
+              INTERVAL; BYDAY (MO/TU/WE/TH/FR/SA/SU; for MONTHLY/YEARLY a leading int picks
+              the Nth weekday, e.g. `2SU`=2nd Sunday, `-1FR`=last Friday); BYMONTH;
+              BYMONTHDAY; BYHOUR; BYMINUTE. If BYHOUR/BYMINUTE are omitted, occurrences fire
+              at dtStart's local hour:minute.
         """.trimIndent()
 
         private val PRIORITY_RULES = """
