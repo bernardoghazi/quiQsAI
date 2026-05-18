@@ -142,6 +142,13 @@ fun QListScreen(
                     sheetRequest = null
                 }
             },
+            // Tapping trash in the sheet surfaces the confirmation dialog above the
+            // open sheet — the sheet stays put so that "Cancel" leaves the user
+            // exactly where they were. "Delete" (in the dialog) is responsible for
+            // tearing the sheet down once the user actually commits.
+            onDelete = {
+                pendingDelete = q
+            },
         )
     }
 
@@ -320,6 +327,7 @@ fun QListScreen(
             playerProvider = playerProvider,
             onSave = request.onSave,
             onDismiss = { sheetRequest = null },
+            onDelete = request.onDelete,
         )
     }
 
@@ -335,6 +343,9 @@ fun QListScreen(
                 TextButton(onClick = {
                     val target = q
                     pendingDelete = null
+                    // Dismiss the sheet too, if it's open (sheet-trash flow). No-op
+                    // for the swipe flow where the sheet was never open.
+                    sheetRequest = null
                     scope.launch { repository.delete(target.id) }
                 }) { Text("Delete") }
             },
@@ -346,11 +357,14 @@ fun QListScreen(
 }
 
 /**
- * Local holder pairing the draft to seed the sheet with and the action to run when the
- * user taps Save. The card-tap path captures the source Q's id; the `+` path doesn't —
- * each call site builds its own [onSave].
+ * Local holder pairing the draft to seed the sheet with, the action to run on Save, and
+ * (in the edit flow only) the action to run on Delete. The card-tap path captures the
+ * source Q's id; the `+` path doesn't — each call site builds its own [onSave]. The
+ * `+` path leaves [onDelete] null so the trash affordance is hidden when there's no Q
+ * to delete yet.
  */
 private data class SheetRequest(
     val initial: QDraft,
     val onSave: (QDraft) -> Unit,
+    val onDelete: (() -> Unit)? = null,
 )

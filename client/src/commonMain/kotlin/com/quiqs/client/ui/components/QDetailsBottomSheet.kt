@@ -94,6 +94,7 @@ import quiqsai.client.generated.resources.mic_recording
 import quiqsai.client.generated.resources.plus
 import quiqsai.client.generated.resources.speaker
 import quiqsai.client.generated.resources.stop
+import quiqsai.client.generated.resources.trash
 import quiqsai.client.generated.resources.x
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.hours
@@ -151,6 +152,10 @@ fun QDetailsBottomSheet(
     playerProvider: PlayerProvider,
     onSave: (QDraft) -> Unit,
     onDismiss: () -> Unit,
+    // Null when the sheet is opened for a brand-new Q (no Q exists yet to delete);
+    // non-null in the edit flow. The caller is expected to dismiss the sheet and
+    // route through its own confirmation flow.
+    onDelete: (() -> Unit)? = null,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(
@@ -170,6 +175,7 @@ fun QDetailsBottomSheet(
             recorderProvider = recorderProvider,
             playerProvider = playerProvider,
             onSave = onSave,
+            onDelete = onDelete,
         )
     }
 }
@@ -192,6 +198,7 @@ private fun QDetailsBottomSheetContent(
     recorderProvider: RecorderProvider = NoRecorder,
     playerProvider: PlayerProvider = NoPlayer,
     onSave: (QDraft) -> Unit = {},
+    onDelete: (() -> Unit)? = null,
 ) {
     // Re-mounting the sheet (dismiss → reopen) gives us fresh state, so plain `remember`
     // is fine — no need to key on `initial`.
@@ -388,6 +395,19 @@ private fun QDetailsBottomSheetContent(
                     )
                 }
                 Spacer(modifier = Modifier.weight(1f))
+                // Only present in the edit flow. Red tint to read as destructive — the
+                // caller is responsible for showing the confirmation dialog and
+                // dismissing the sheet.
+                if (onDelete != null) {
+                    IconButton(onClick = onDelete) {
+                        Icon(
+                            painter = painterResource(Res.drawable.trash),
+                            contentDescription = "Delete Q",
+                            tint = Color(0xFFD85A5A),
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                }
                 val saveEnabled = draftText.isNotBlank() || draftVoiceNotePath != null
                 TextButton(
                     onClick = {
