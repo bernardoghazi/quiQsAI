@@ -138,18 +138,6 @@ class LlmPromptBuilder(
             - `dtStart` is REQUIRED.
             - `until` and `count` are mutually exclusive. Both null means recur forever.
             - The `rule` is the RRULE body only. Do NOT put DTSTART, UNTIL, or COUNT inside it.
-            - Supported RRULE parts: FREQ (MINUTELY|HOURLY|DAILY|WEEKLY|MONTHLY|YEARLY),
-              INTERVAL, BYDAY (MO/TU/WE/TH/FR/SA/SU; for MONTHLY/YEARLY a leading int picks
-              the Nth weekday, e.g. `2SU`=2nd Sunday, `-1FR`=last Friday), BYMONTH,
-              BYMONTHDAY, BYHOUR, BYMINUTE. If BYHOUR/BYMINUTE are omitted, occurrences fire
-              at dtStart's local hour:minute. Examples:
-                - "every 90 min from 8am to 10pm on weekdays" → rule "FREQ=MINUTELY;INTERVAL=90;BYHOUR=8,9,10,11,12,13,14,15,16,17,18,19,20,21;BYDAY=MO,TU,WE,TH,FR"
-                - "every 3 hours from 8am to 10pm" → rule "FREQ=HOURLY;INTERVAL=3;BYHOUR=8,9,10,11,12,13,14,15,16,17,18,19,20,21"
-                - "every other week on Mon/Wed/Fri" → rule "FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,WE,FR"
-                - "the 15th of every 2 months"      → rule "FREQ=MONTHLY;INTERVAL=2;BYMONTHDAY=15"
-                - "second Sunday every 2 months"    → rule "FREQ=MONTHLY;INTERVAL=2;BYDAY=2SU"
-                - "Nov 20 every 2 years"            → rule "FREQ=YEARLY;INTERVAL=2;BYMONTH=11;BYMONTHDAY=20"
-                - "daily, ending after 10 times"    → rule "FREQ=DAILY", count 10
         """.trimIndent()
 
         private val PRIORITY_RULES = """
