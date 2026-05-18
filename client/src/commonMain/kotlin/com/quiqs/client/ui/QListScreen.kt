@@ -1,5 +1,6 @@
 package com.quiqs.client.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -10,14 +11,18 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -28,6 +33,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
@@ -47,6 +53,7 @@ import com.quiqs.shared.applyTo
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.painterResource
 import quiqsai.client.generated.resources.Res
+import quiqsai.client.generated.resources.trash
 import quiqsai.client.generated.resources.wave
 import kotlin.uuid.ExperimentalUuidApi
 
@@ -102,6 +109,12 @@ fun QListScreen(
     // seeded from that Q) or the bottom bar's `+` (empty draft); cleared on dismiss
     // (scrim tap or back press), discarding anything the user typed/recorded.
     var sheetRequest by remember { mutableStateOf<SheetRequest?>(null) }
+
+    // The Q currently pending deletion, surfaced through a confirmation dialog. Set
+    // when the user swipes a card past the dismiss threshold; cleared on confirm
+    // (after delete runs) or on cancel/dismiss (the swiped card springs back on its
+    // own because the swipe-state's confirmValueChange returns false).
+    var pendingDelete by remember { mutableStateOf<Q?>(null) }
 
     // Shared builder for the edit sheet used by both card tap and notification deep
     // link — keeps the save logic in one place.
@@ -247,15 +260,52 @@ fun QListScreen(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 items(qs, key = { it.id.toString() }) { q ->
-                    QCard(
-                        q = q,
-                        checked = q.completed,
-                        playerProvider = playerProvider,
-                        onCheckedChange = { checked ->
-                            scope.launch { repository.update(q.id, completed = checked) }
+                    // Left-swipe (EndToStart) reveals a red trash background and opens
+                    // the delete confirmation dialog. confirmValueChange returns false
+                    // so the swipe never actually settles to dismissed — the card
+                    // springs back to its resting position while the dialog decides
+                    // the actual fate. Right-swipe is disabled to avoid an
+                    // unmarked-affordance gesture.
+                    val swipeState = rememberSwipeToDismissBoxState(
+                        confirmValueChange = { value ->
+                            if (value == SwipeToDismissBoxValue.EndToStart) {
+                                pendingDelete = q
+                            }
+                            false
                         },
-                        onClick = { sheetRequest = makeEditRequest(q) },
                     )
+                    SwipeToDismissBox(
+                        state = swipeState,
+                        enableDismissFromStartToEnd = false,
+                        enableDismissFromEndToStart = true,
+                        backgroundContent = {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(Color(0xFFC02A1A))
+                                    .padding(horizontal = 20.dp),
+                                contentAlignment = Alignment.CenterEnd,
+                            ) {
+                                Icon(
+                                    painter = painterResource(Res.drawable.trash),
+                                    contentDescription = "Delete Q",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(22.dp),
+                                )
+                            }
+                        },
+                    ) {
+                        QCard(
+                            q = q,
+                            checked = q.completed,
+                            playerProvider = playerProvider,
+                            onCheckedChange = { checked ->
+                                scope.launch { repository.update(q.id, completed = checked) }
+                            },
+                            onClick = { sheetRequest = makeEditRequest(q) },
+                        )
+                    }
                 }
             }
         }
@@ -270,6 +320,27 @@ fun QListScreen(
             playerProvider = playerProvider,
             onSave = request.onSave,
             onDismiss = { sheetRequest = null },
+        )
+    }
+
+    pendingDelete?.let { q ->
+        // "Voice note" stands in for an empty title in the dialog body, mirroring
+        // QCard's own fallback so the user sees the same label they tapped.
+        val label = if (q.text.isBlank() && q.voiceNotePath != null) "Voice note" else q.text
+        AlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            title = { Text("Delete Q?") },
+            text = { Text("Delete “$label”? This can’t be undone.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    val target = q
+                    pendingDelete = null
+                    scope.launch { repository.delete(target.id) }
+                }) { Text("Delete") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDelete = null }) { Text("Cancel") }
+            },
         )
     }
 }
