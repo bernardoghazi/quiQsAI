@@ -91,7 +91,6 @@ import quiqsai.client.generated.resources.exclamation
 import quiqsai.client.generated.resources.label
 import quiqsai.client.generated.resources.mic
 import quiqsai.client.generated.resources.mic_recording
-import quiqsai.client.generated.resources.plus
 import quiqsai.client.generated.resources.speaker
 import quiqsai.client.generated.resources.stop
 import quiqsai.client.generated.resources.trash
@@ -128,6 +127,7 @@ data class QDraft(
     val alarms: List<Alarm> = emptyList(),
     val priority: Priority = Priority.MEDIUM,
     val tags: List<String> = emptyList(),
+    val completed: Boolean = false,
 )
 
 /**
@@ -140,9 +140,6 @@ data class QDraft(
  * The sheet is visually composed of four independent rounded surfaces separated by 4 dp
  * gaps, so its `containerColor` is transparent and the gaps fall through to the dimmed
  * scrim.
- *
- * Pill `×` glyphs and the action-bar icons are temporary placeholders rendered with
- * `Res.drawable.plus`; both will be swapped for real assets once they land.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -206,6 +203,7 @@ private fun QDetailsBottomSheetContent(
     var draftVoiceNotePath by remember { mutableStateOf(initial.voiceNotePath) }
     var draftAlarms by remember { mutableStateOf(initial.alarms) }
     var draftPriority by remember { mutableStateOf(initial.priority) }
+    var draftCompleted by remember { mutableStateOf(initial.completed) }
     // Drives the sheet's internal nav: the main draft form vs. the alarm builder
     // overlay. Driven by the clock action on the main draft and by tapping an
     // existing alarm pill (which pre-fills the builder).
@@ -343,12 +341,16 @@ private fun QDetailsBottomSheetContent(
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                IconButton(onClick = {}) {
-                    Icon(
-                        painter = painterResource(Res.drawable.plus),
-                        contentDescription = null,
-                        tint = Color(0xFFEDEDED),
-                        modifier = Modifier.size(20.dp),
+                // Completion toggle — same circle-with-check visual as QCard's row
+                // checkbox. The 40 dp Box matches IconButton's default touch target so
+                // the action bar's tap rhythm stays consistent across slots.
+                Box(
+                    modifier = Modifier.size(40.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    QCheckbox(
+                        checked = draftCompleted,
+                        onCheckedChange = { draftCompleted = it },
                     )
                 }
                 IconButton(onClick = {
@@ -417,6 +419,7 @@ private fun QDetailsBottomSheetContent(
                                 voiceNotePath = draftVoiceNotePath,
                                 alarms = draftAlarms,
                                 priority = draftPriority,
+                                completed = draftCompleted,
                             )
                         )
                     },

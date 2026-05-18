@@ -195,6 +195,13 @@ class SqlDelightQRepository(
             val effective = if (updated.completed) null else updated.alarms.firstOrNull()
             alarmScheduler.sync(updated.id, effective)
         }
+        // When the Q transitions open → done, dismiss any visible notification so the
+        // user isn't left tapping a reminder for a Q they just marked complete.
+        // Transitions in the other direction don't need this (no notification could be
+        // posted for a Q that wasn't already firing).
+        if (completionChanged && updated.completed) {
+            alarmScheduler.dismissActiveNotification(updated.id)
+        }
         return updated
     }
 

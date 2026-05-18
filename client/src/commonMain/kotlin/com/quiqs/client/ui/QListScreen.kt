@@ -126,6 +126,7 @@ fun QListScreen(
                 alarms = q.alarms,
                 priority = q.priority,
                 tags = q.tags,
+                completed = q.completed,
             ),
             onSave = { draft ->
                 scope.launch {
@@ -135,6 +136,7 @@ fun QListScreen(
                         tags = draft.tags,
                         alarms = draft.alarms,
                         priority = draft.priority,
+                        completed = draft.completed,
                     )
                     if (draft.voiceNotePath != q.voiceNotePath) {
                         repository.setVoiceNote(q.id, draft.voiceNotePath)
@@ -227,6 +229,7 @@ fun QListScreen(
                                     tags = draft.tags,
                                     alarms = draft.alarms,
                                     priority = draft.priority,
+                                    completed = draft.completed,
                                     voiceNotePath = draft.voiceNotePath,
                                 )
                                 sheetRequest = null
