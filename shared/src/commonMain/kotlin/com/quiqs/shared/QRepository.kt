@@ -221,7 +221,11 @@ class SqlDelightQRepository(
 
     override suspend fun delete(id: Uuid) {
         queries.deleteById(id.toString())
+        // sync(null) cancels every pending OS wakeup (main + any side reminders);
+        // dismiss any notification still on screen so the user isn't left tapping
+        // a card that no longer exists.
         alarmScheduler.sync(id, null)
+        alarmScheduler.dismissActiveNotification(id)
     }
 
     /** Maps a raw SQLDelight row to the domain [Q], decoding the JSON-encoded columns. */

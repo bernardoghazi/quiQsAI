@@ -20,9 +20,18 @@ interface AlarmScheduler {
      * previously scheduled for the same [qId].
      */
     fun sync(qId: Uuid, alarm: Alarm?)
+
+    /**
+     * Dismiss any notification currently posted for [qId]. Idempotent — if no
+     * notification is showing, the call is a no-op. Called when a Q is deleted so
+     * the user isn't left with a stale notification referencing a Q that no longer
+     * exists.
+     */
+    fun dismissActiveNotification(qId: Uuid)
 }
 
 /** Default fallback on platforms with no alarm support yet (iOS, desktop). */
 object NoopAlarmScheduler : AlarmScheduler {
     override fun sync(qId: Uuid, alarm: Alarm?) = Unit
+    override fun dismissActiveNotification(qId: Uuid) = Unit
 }

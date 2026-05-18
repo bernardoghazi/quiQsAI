@@ -7,6 +7,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.util.Log
+import androidx.core.app.NotificationManagerCompat
 import com.quiqs.shared.Alarm
 import com.quiqs.shared.AlarmScheduler
 import com.quiqs.shared.nextRecurringInstant
@@ -54,6 +55,13 @@ class AndroidAlarmScheduler(context: Context) : AlarmScheduler {
             return
         }
         scheduleExact(qId, triggerAt)
+    }
+
+    override fun dismissActiveNotification(qId: Uuid) {
+        // Posted notifications use qId.requestCode() as their id (see
+        // AlarmReceiver.postNotification). cancel() is a no-op if nothing is showing.
+        NotificationManagerCompat.from(appContext).cancel(qId.requestCode())
+        Log.d(TAG, "dismissActiveNotification($qId): cancelled")
     }
 
     private fun cancel(qId: Uuid) {
