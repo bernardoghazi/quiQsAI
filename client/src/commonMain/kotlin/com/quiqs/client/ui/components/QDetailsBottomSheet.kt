@@ -12,13 +12,13 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -860,7 +860,7 @@ private sealed class SheetScreen {
 }
 
 private enum class AlarmBuilderStep {
-    PickType, FormOneTime, FormInterval, FormCalendar,
+    PickType, FormOneTime, FormInterval,
 }
 
 /**
@@ -881,8 +881,12 @@ private fun AlarmBuilder(
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         AnimatedContent(targetState = step, label = "alarm-builder-step") { current ->
+            // Multi-section forms can overflow a short modal sheet — wrap the inner
+            // column in a vertical scroll so the Done footer always stays reachable.
             Column(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 when (current) {
@@ -891,7 +895,6 @@ private fun AlarmBuilder(
                         onBack = onCancel,
                         onPickOneTime = { step = AlarmBuilderStep.FormOneTime },
                         onPickInterval = { step = AlarmBuilderStep.FormInterval },
-                        onPickCalendar = { step = AlarmBuilderStep.FormCalendar },
                     )
                     AlarmBuilderStep.FormOneTime -> OneTimeForm(
                         editing = editing,
@@ -899,11 +902,6 @@ private fun AlarmBuilder(
                         onConfirm = onAlarmChosen,
                     )
                     AlarmBuilderStep.FormInterval -> IntervalForm(
-                        editing = editing,
-                        onBack = { step = AlarmBuilderStep.PickType },
-                        onConfirm = onAlarmChosen,
-                    )
-                    AlarmBuilderStep.FormCalendar -> CalendarForm(
                         editing = editing,
                         onBack = { step = AlarmBuilderStep.PickType },
                         onConfirm = onAlarmChosen,
@@ -920,7 +918,6 @@ private fun AlarmTypePicker(
     onBack: () -> Unit,
     onPickOneTime: () -> Unit,
     onPickInterval: () -> Unit,
-    onPickCalendar: () -> Unit,
 ) {
     SheetSection(
         shape = RoundedCornerShape(
@@ -951,13 +948,8 @@ private fun AlarmTypePicker(
             )
             BuilderOptionRow(
                 title = "Interval",
-                description = "Repeat every N minutes or hours within a daily window.",
+                description = "Repeat every N minutes, hours, days, weeks, months, or years.",
                 onClick = onPickInterval,
-            )
-            BuilderOptionRow(
-                title = "Calendar",
-                description = "Repeat daily, weekly, monthly, or yearly.",
-                onClick = onPickCalendar,
             )
         }
     }
@@ -1195,14 +1187,16 @@ private fun monthShort(month: Month): String = when (month) {
 }
 
 /**
- * Form for an "interval" recurring alarm: fire every N minutes or hours, optionally
- * restricted to specific weekdays. Compiles to
- * `FREQ=MINUTELY|HOURLY;INTERVAL=N;BYDAY=..` with [Alarm.RecurringTime.dtStart] anchored
- * to the current minute — subsequent firings step `INTERVAL` units from there.
+ * Form for a recurring alarm: fire every N units (minutes, hours, days, weeks, months,
+ * or years), optionally restricted to specific weekdays, optionally bounded by an end
+ * date or fire count. Compiles to
+ * `FREQ=MINUTELY|HOURLY|DAILY|WEEKLY|MONTHLY|YEARLY;INTERVAL=N;BYDAY=…` with
+ * [Alarm.RecurringTime.dtStart] anchoring the first occurrence — subsequent firings
+ * step `INTERVAL` units from there. For MONTHLY/YEARLY without a BYDAY restriction,
+ * the day-of-month / month+day pattern comes from `dtStart` per RFC 5545 defaults.
  *
- * Pre-fills from [editing] when it is a [Alarm.RecurringTime] whose rule has
- * `FREQ=MINUTELY` or `FREQ=HOURLY`; otherwise the form opens at its defaults
- * (the user is switching alarm type).
+ * Pre-fills from [editing] when it is a [Alarm.RecurringTime]; falls back to defaults
+ * when [editing] is a different alarm shape (user switching type).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -1224,12 +1218,30 @@ private fun IntervalForm(
     var dtStartHour by remember { mutableStateOf(seedStartLocal.hour) }
     var dtStartMinute by remember { mutableStateOf(seedStartLocal.minute) }
     var end by remember { mutableStateOf<EndChoice>(seed?.end ?: EndChoice.Never) }
+    // Monthly-pattern state, only surfaced in the UI when unit is MONTHS. Defaults are
+    // derived from dtStart so flipping to months feels like a sensible continuation
+    // rather than a fresh blank.
+    var monthlyMode by remember { mutableStateOf(seed?.monthlyMode ?: MonthlyMode.DAY_OF_MONTH) }
+    var monthlyDay by remember { mutableStateOf(seed?.monthlyDay ?: seedStartLocal.date.day) }
+    var monthlyOrdinal by remember { mutableStateOf(seed?.monthlyOrdinal ?: NthOrdinal.FIRST) }
+    var monthlyWeekday by remember { mutableStateOf(seed?.monthlyWeekday ?: seedStartLocal.date.dayOfWeek) }
 
     var dtStartDatePickerOpen by remember { mutableStateOf(false) }
     var dtStartTimePickerOpen by remember { mutableStateOf(false) }
     var untilDatePickerOpen by remember { mutableStateOf(false) }
 
-    val canSave = weekdays.isNotEmpty() && valueInt >= 1
+    // Weekday chips don't apply when unit is months — the monthly pattern UI owns
+    // that slot — so the empty-weekdays guard is only required for the other units.
+    val canSave = valueInt >= 1 && (unit == IntervalUnit.MONTHS || weekdays.isNotEmpty())
+
+    // Switching unit resets the count to a sensible default for that unit; switching
+    // back to a unit you already had keeps whatever the user had typed.
+    val pickUnit: (IntervalUnit, String) -> Unit = { picked, default ->
+        if (unit != picked) {
+            unit = picked
+            valueText = default
+        }
+    }
 
     SheetSection(
         shape = RoundedCornerShape(
@@ -1241,68 +1253,126 @@ private fun IntervalForm(
     ) {
         BuilderHeader(title = "Interval alarm", onBack = onBack)
     }
+    // Every
     SheetSection(shape = RoundedCornerShape(4.dp)) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
                 .padding(horizontal = SHEET_SECTION_HORIZONTAL_PADDING.dp, vertical = 18.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            // Every
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 FormFieldLabel("Every")
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                // Six unit chips plus the number field — FlowRow wraps onto a second
+                // line on narrower screens rather than letting any chip clip.
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    itemVerticalAlignment = Alignment.CenterVertically,
                 ) {
                     NumberField(
                         text = valueText,
                         onTextChange = { valueText = it },
                     )
-                    ToggleChip("minutes", unit == IntervalUnit.MINUTES) {
-                        if (unit != IntervalUnit.MINUTES) {
-                            unit = IntervalUnit.MINUTES
-                            valueText = "15"
-                        }
-                    }
-                    ToggleChip("hours", unit == IntervalUnit.HOURS) {
-                        if (unit != IntervalUnit.HOURS) {
-                            unit = IntervalUnit.HOURS
-                            valueText = "1"
-                        }
-                    }
+                    ToggleChip("minutes", unit == IntervalUnit.MINUTES) { pickUnit(IntervalUnit.MINUTES, "15") }
+                    ToggleChip("hours", unit == IntervalUnit.HOURS) { pickUnit(IntervalUnit.HOURS, "1") }
+                    ToggleChip("days", unit == IntervalUnit.DAYS) { pickUnit(IntervalUnit.DAYS, "1") }
+                    ToggleChip("weeks", unit == IntervalUnit.WEEKS) { pickUnit(IntervalUnit.WEEKS, "1") }
+                    ToggleChip("months", unit == IntervalUnit.MONTHS) { pickUnit(IntervalUnit.MONTHS, "1") }
+                    ToggleChip("years", unit == IntervalUnit.YEARS) { pickUnit(IntervalUnit.YEARS, "1") }
                 }
             }
 
-            // Starting
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                FormFieldLabel("Starting")
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    StartingCell(
-                        text = formatDateLabel(dtStartDate, tz),
-                        modifier = Modifier.weight(1f),
-                        onClick = { dtStartDatePickerOpen = true },
-                    )
-                    StartingCell(
-                        text = formatTimeLabel(dtStartHour, dtStartMinute),
-                        onClick = { dtStartTimePickerOpen = true },
-                    )
+            // Monthly pattern — only relevant when unit is months. Day-of-month emits
+            // BYMONTHDAY; the Nth-weekday row emits an ordinal BYDAY (`1MO` = first
+            // Monday, `-1FR` = last Friday). The "On" section is hidden when this is
+            // visible because they'd both fight for the BYDAY slot.
+            if (unit == IntervalUnit.MONTHS) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    RadioContentRow(
+                        selected = monthlyMode == MonthlyMode.DAY_OF_MONTH,
+                        onClick = { monthlyMode = MonthlyMode.DAY_OF_MONTH },
+                    ) {
+                        InlineLabel("Day")
+                        DropdownPicker(
+                            selected = monthlyDay,
+                            options = (1..31).toList(),
+                            labelOf = { it.toString() },
+                            onSelect = { monthlyDay = it },
+                        )
+                        InlineLabel("of the month")
+                    }
+                    RadioContentRow(
+                        selected = monthlyMode == MonthlyMode.NTH_WEEKDAY,
+                        onClick = { monthlyMode = MonthlyMode.NTH_WEEKDAY },
+                    ) {
+                        InlineLabel("The")
+                        DropdownPicker(
+                            selected = monthlyOrdinal,
+                            options = NthOrdinal.entries.toList(),
+                            labelOf = { it.label },
+                            onSelect = { monthlyOrdinal = it },
+                        )
+                        DropdownPicker(
+                            selected = monthlyWeekday,
+                            options = SUNDAY_FIRST_WEEKDAYS,
+                            labelOf = { it.fullLabel() },
+                            onSelect = { monthlyWeekday = it },
+                        )
+                    }
                 }
             }
-
-            // On
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        }
+    }
+    // Starting
+    SheetSection(shape = RoundedCornerShape(4.dp)) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = SHEET_SECTION_HORIZONTAL_PADDING.dp, vertical = 18.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            FormFieldLabel("Starting")
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                StartingCell(
+                    text = formatDateLabel(dtStartDate, tz),
+                    modifier = Modifier.weight(1f),
+                    onClick = { dtStartDatePickerOpen = true },
+                )
+                StartingCell(
+                    text = formatTimeLabel(dtStartHour, dtStartMinute),
+                    onClick = { dtStartTimePickerOpen = true },
+                )
+            }
+        }
+    }
+    // On — the monthly pattern UI in the Every section owns BYDAY when unit is months,
+    // so this section drops out entirely to avoid conflicting BYDAY semantics.
+    if (unit != IntervalUnit.MONTHS) {
+        SheetSection(shape = RoundedCornerShape(4.dp)) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = SHEET_SECTION_HORIZONTAL_PADDING.dp, vertical = 18.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 FormFieldLabel("On")
                 WeekdayChips(selected = weekdays) { day ->
                     weekdays = if (day in weekdays) weekdays - day else weekdays + day
                 }
             }
-
-            // Ends
+        }
+    }
+    // Ends
+    SheetSection(shape = RoundedCornerShape(4.dp)) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = SHEET_SECTION_HORIZONTAL_PADDING.dp, vertical = 18.dp),
+        ) {
             EndsBlock(
                 end = end,
                 onChange = { end = it },
@@ -1330,7 +1400,15 @@ private fun IntervalForm(
                 enabled = canSave,
                 onClick = {
                     val dtStart = dtStartDate.atTime(dtStartHour, dtStartMinute).toInstant(tz)
-                    val rule = buildIntervalRule(valueInt, unit, weekdays)
+                    val rule = buildIntervalRule(
+                        value = valueInt,
+                        unit = unit,
+                        weekdays = weekdays,
+                        monthlyMode = monthlyMode,
+                        monthlyDay = monthlyDay,
+                        monthlyOrdinal = monthlyOrdinal,
+                        monthlyWeekday = monthlyWeekday,
+                    )
                     val until = (end as? EndChoice.OnDate)?.date
                         ?.atTime(23, 59)
                         ?.toInstant(tz)
@@ -1389,264 +1467,14 @@ private fun IntervalForm(
     }
 }
 
-/**
- * Form for a "calendar" recurring alarm: fire on a daily / weekly / monthly / yearly
- * cadence. Most pattern values (day-of-month, Nth-weekday, target month for yearly)
- * are derived from [Alarm.RecurringTime.dtStart]; the form only exposes the
- * frequency, the interval, and — for monthly/yearly — a date-vs-Nth-weekday toggle.
- *
- * Pre-fills from [editing] when it is a [Alarm.RecurringTime] whose rule has
- * `FREQ=DAILY|WEEKLY|MONTHLY|YEARLY`; otherwise opens at defaults (user is
- * switching alarm type).
- */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun CalendarForm(
-    editing: Alarm?,
-    onBack: () -> Unit,
-    onConfirm: (Alarm.RecurringTime) -> Unit,
-) {
-    val tz = TimeZone.currentSystemDefault()
-    val seed = (editing as? Alarm.RecurringTime)?.let { parseCalendarAlarm(it, tz) }
-    val seedStartLocal = (seed?.dtStart ?: defaultDtStart(tz)).toLocalDateTime(tz)
-
-    var freq by remember { mutableStateOf(seed?.freq ?: CalendarFreq.WEEKLY) }
-    var intervalText by remember { mutableStateOf((seed?.interval ?: 1).toString()) }
-    val intervalInt = intervalText.toIntOrNull() ?: 0
-    var weeklyDays by remember {
-        mutableStateOf<Set<DayOfWeek>>(seed?.weeklyDays ?: emptySet())
-    }
-    var monthlyMode by remember { mutableStateOf(seed?.monthlyMode ?: MonthlyMode.DAY_OF_MONTH) }
-    var monthlyDay by remember { mutableStateOf(seed?.monthlyDay ?: seedStartLocal.date.day) }
-    var monthlyOrdinal by remember { mutableStateOf(seed?.monthlyOrdinal ?: NthOrdinal.FIRST) }
-    var monthlyWeekday by remember { mutableStateOf(seed?.monthlyWeekday ?: seedStartLocal.date.dayOfWeek) }
-    var dtStartDate by remember { mutableStateOf(seedStartLocal.date) }
-    var dtStartHour by remember { mutableStateOf(seedStartLocal.hour) }
-    var dtStartMinute by remember { mutableStateOf(seedStartLocal.minute) }
-    var end by remember { mutableStateOf<EndChoice>(seed?.end ?: EndChoice.Never) }
-
-    var datePickerOpen by remember { mutableStateOf(false) }
-    var timePickerOpen by remember { mutableStateOf(false) }
-    var untilDatePickerOpen by remember { mutableStateOf(false) }
-
-    val canSave = intervalInt >= 1 && when (freq) {
-        CalendarFreq.WEEKLY -> weeklyDays.isNotEmpty()
-        else -> true
-    }
-
-    SheetSection(
-        shape = RoundedCornerShape(
-            topStart = 14.dp,
-            topEnd = 14.dp,
-            bottomStart = 4.dp,
-            bottomEnd = 4.dp,
-        ),
-    ) {
-        BuilderHeader(title = "Calendar alarm", onBack = onBack)
-    }
-    // Section A: Every (+ freq-specific bits) + At
-    SheetSection(shape = RoundedCornerShape(4.dp)) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = SHEET_SECTION_HORIZONTAL_PADDING.dp, vertical = 18.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp),
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                FormFieldLabel("Every")
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                    itemVerticalAlignment = Alignment.CenterVertically,
-                ) {
-                    NumberField(
-                        text = intervalText,
-                        onTextChange = { intervalText = it },
-                    )
-                    ToggleChip("day", freq == CalendarFreq.DAILY) { freq = CalendarFreq.DAILY }
-                    ToggleChip("week", freq == CalendarFreq.WEEKLY) { freq = CalendarFreq.WEEKLY }
-                    ToggleChip("month", freq == CalendarFreq.MONTHLY) { freq = CalendarFreq.MONTHLY }
-                    ToggleChip("year", freq == CalendarFreq.YEARLY) { freq = CalendarFreq.YEARLY }
-                }
-            }
-
-            when (freq) {
-                CalendarFreq.DAILY -> Unit
-                CalendarFreq.WEEKLY -> WeekdayChips(selected = weeklyDays) { day ->
-                    weeklyDays = if (day in weeklyDays) weeklyDays - day else weeklyDays + day
-                }
-                CalendarFreq.MONTHLY -> Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    RadioContentRow(
-                        selected = monthlyMode == MonthlyMode.DAY_OF_MONTH,
-                        onClick = { monthlyMode = MonthlyMode.DAY_OF_MONTH },
-                    ) {
-                        InlineLabel("Day")
-                        DropdownPicker(
-                            selected = monthlyDay,
-                            options = (1..31).toList(),
-                            labelOf = { it.toString() },
-                            onSelect = { monthlyDay = it },
-                        )
-                        InlineLabel("of the month")
-                    }
-                    RadioContentRow(
-                        selected = monthlyMode == MonthlyMode.NTH_WEEKDAY,
-                        onClick = { monthlyMode = MonthlyMode.NTH_WEEKDAY },
-                    ) {
-                        InlineLabel("The")
-                        DropdownPicker(
-                            selected = monthlyOrdinal,
-                            options = NthOrdinal.entries.toList(),
-                            labelOf = { it.label },
-                            onSelect = { monthlyOrdinal = it },
-                        )
-                        DropdownPicker(
-                            selected = monthlyWeekday,
-                            options = SUNDAY_FIRST_WEEKDAYS,
-                            labelOf = { it.fullLabel() },
-                            onSelect = { monthlyWeekday = it },
-                        )
-                    }
-                }
-                CalendarFreq.YEARLY -> Unit
-            }
-
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                FormFieldLabel("At")
-                StartingCell(
-                    text = formatTimeLabel(dtStartHour, dtStartMinute),
-                    onClick = { timePickerOpen = true },
-                )
-            }
-        }
-    }
-    // Section B: Starting (date)
-    SheetSection(shape = RoundedCornerShape(4.dp)) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = SHEET_SECTION_HORIZONTAL_PADDING.dp, vertical = 18.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            FormFieldLabel("Starting")
-            StartingCell(
-                text = formatDateLabel(dtStartDate, tz),
-                onClick = { datePickerOpen = true },
-            )
-        }
-    }
-    // Section C: Ends
-    SheetSection(shape = RoundedCornerShape(4.dp)) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = SHEET_SECTION_HORIZONTAL_PADDING.dp, vertical = 18.dp),
-        ) {
-            EndsBlock(
-                end = end,
-                onChange = { end = it },
-                onPickDate = { untilDatePickerOpen = true },
-                tz = tz,
-            )
-        }
-    }
-    SheetSection(
-        shape = RoundedCornerShape(
-            topStart = 4.dp,
-            topEnd = 4.dp,
-            bottomStart = 14.dp,
-            bottomEnd = 14.dp,
-        ),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = SHEET_SECTION_HORIZONTAL_PADDING.dp - 6.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Spacer(modifier = Modifier.weight(1f))
-            TextButton(
-                enabled = canSave,
-                onClick = {
-                    val dtStart = dtStartDate.atTime(dtStartHour, dtStartMinute).toInstant(tz)
-                    val rule = buildCalendarRule(
-                        freq = freq,
-                        interval = intervalInt,
-                        weeklyDays = weeklyDays,
-                        monthlyMode = monthlyMode,
-                        monthlyDay = monthlyDay,
-                        monthlyOrdinal = monthlyOrdinal,
-                        monthlyWeekday = monthlyWeekday,
-                        dtStartDate = dtStartDate,
-                    )
-                    val until = (end as? EndChoice.OnDate)?.date
-                        ?.atTime(23, 59)
-                        ?.toInstant(tz)
-                    val count = (end as? EndChoice.AfterCount)?.count
-                    onConfirm(
-                        Alarm.RecurringTime(
-                            rule = rule,
-                            dtStart = dtStart,
-                            until = until,
-                            count = count,
-                        )
-                    )
-                },
-            ) {
-                Text(
-                    text = "Done",
-                    color = if (canSave) Color(0xFFEDEDED) else Color(0xFF555555),
-                    fontWeight = FontWeight.ExtraBold,
-                )
-            }
-        }
-    }
-
-    if (datePickerOpen) {
-        DatePickerOverlay(
-            initial = dtStartDate,
-            onDismiss = { datePickerOpen = false },
-            onConfirm = { picked ->
-                dtStartDate = picked
-                datePickerOpen = false
-            },
-        )
-    }
-    if (timePickerOpen) {
-        TimePickerOverlay(
-            initialHour = dtStartHour,
-            initialMinute = dtStartMinute,
-            onDismiss = { timePickerOpen = false },
-            onConfirm = { h, m ->
-                dtStartHour = h
-                dtStartMinute = m
-                timePickerOpen = false
-            },
-        )
-    }
-    if (untilDatePickerOpen) {
-        val initialDate = (end as? EndChoice.OnDate)?.date ?: defaultUntilDate(tz)
-        DatePickerOverlay(
-            initial = initialDate,
-            onDismiss = { untilDatePickerOpen = false },
-            onConfirm = { picked ->
-                end = EndChoice.OnDate(picked)
-                untilDatePickerOpen = false
-            },
-        )
-    }
-}
-
-private enum class IntervalUnit { MINUTES, HOURS }
-
-private enum class CalendarFreq { DAILY, WEEKLY, MONTHLY, YEARLY }
+private enum class IntervalUnit { MINUTES, HOURS, DAYS, WEEKS, MONTHS, YEARS }
 
 private enum class MonthlyMode { DAY_OF_MONTH, NTH_WEEKDAY }
 
 /**
- * Ordinal prefix used for monthly/yearly Nth-weekday rules. The [rfcValue] is the
- * integer that goes in front of the day code in a BYDAY entry — e.g. `2SU` = second
- * Sunday, `-1FR` = last Friday — per RFC 5545 §3.3.10.
+ * Ordinal prefix used for monthly Nth-weekday rules. The [rfcValue] is the integer
+ * that goes in front of the day code in a BYDAY entry — e.g. `2SU` = second Sunday,
+ * `-1FR` = last Friday — per RFC 5545 §3.3.10.
  */
 private enum class NthOrdinal(val rfcValue: Int, val label: String) {
     FIRST(1, "first"),
@@ -1869,7 +1697,7 @@ private fun RadioRow(
 
 /**
  * Radio-row variant with a flexible content slot rather than a single [String] label —
- * used by the monthly pattern rows in [CalendarForm], which embed dropdowns inline
+ * used by the monthly pattern rows in [IntervalForm], which embed dropdowns inline
  * with the row label text.
  */
 @Composable
@@ -2067,14 +1895,20 @@ private data class IntervalFormDefaults(
     val weekdays: Set<DayOfWeek>,
     val end: EndChoice,
     val dtStart: Instant,
+    // Monthly-specific pattern. Always populated (with sensible defaults derived from
+    // dtStart for non-MONTHLY rules), so the form can fall back to them if the user
+    // later switches the unit to months.
+    val monthlyMode: MonthlyMode,
+    val monthlyDay: Int,
+    val monthlyOrdinal: NthOrdinal,
+    val monthlyWeekday: DayOfWeek,
 )
 
 /**
  * Inverse of [buildIntervalRule]: extracts the interval-form fields from an existing
  * [Alarm.RecurringTime] so the builder can re-open in the state the user previously
- * picked. Returns `null` if the rule isn't sub-day (`FREQ` other than `MINUTELY` /
- * `HOURLY`), which signals the user is changing alarm type and the form should fall
- * back to defaults.
+ * picked. Returns `null` only if the rule's `FREQ` is unrecognized, which is the
+ * signal to fall back to defaults.
  */
 private fun parseIntervalAlarm(alarm: Alarm.RecurringTime, tz: TimeZone): IntervalFormDefaults? {
     val parts = alarm.rule
@@ -2089,14 +1923,46 @@ private fun parseIntervalAlarm(alarm: Alarm.RecurringTime, tz: TimeZone): Interv
     val unit = when (parts["FREQ"]?.uppercase()) {
         "MINUTELY" -> IntervalUnit.MINUTES
         "HOURLY" -> IntervalUnit.HOURS
+        "DAILY" -> IntervalUnit.DAYS
+        "WEEKLY" -> IntervalUnit.WEEKS
+        "MONTHLY" -> IntervalUnit.MONTHS
+        "YEARLY" -> IntervalUnit.YEARS
         else -> return null
     }
     val value = parts["INTERVAL"]?.toIntOrNull()?.coerceAtLeast(1) ?: 1
-    val weekdays = parts["BYDAY"]
-        ?.split(',')
-        ?.mapNotNull { it.toDayOfWeekIgnoringOrdinal() }
-        ?.toSet()
-        ?: WEEKDAYS_ORDERED.toSet()
+    val byDay = parts["BYDAY"]
+    val hasOrdinalBYDAY = byDay != null && byDayHasOrdinal(byDay)
+    // For MONTHLY+BYDAY with an ordinal prefix the BYDAY is the pattern itself
+    // ("first Monday"), not a weekday filter — don't surface it as weekday chips.
+    val weekdays = if (unit == IntervalUnit.MONTHS && hasOrdinalBYDAY) {
+        WEEKDAYS_ORDERED.toSet()
+    } else {
+        byDay
+            ?.split(',')
+            ?.mapNotNull { it.toDayOfWeekIgnoringOrdinal() }
+            ?.toSet()
+            ?: WEEKDAYS_ORDERED.toSet()
+    }
+    val dtStartLocal = alarm.dtStart.toLocalDateTime(tz)
+    val monthlyMode = if (unit == IntervalUnit.MONTHS && hasOrdinalBYDAY) {
+        MonthlyMode.NTH_WEEKDAY
+    } else {
+        MonthlyMode.DAY_OF_MONTH
+    }
+    val monthlyDay = (parts["BYMONTHDAY"]?.split(',')?.firstNotNullOfOrNull { it.toIntOrNull() })
+        ?.takeIf { it in 1..31 }
+        ?: dtStartLocal.date.day
+    val nthFromByDay = if (monthlyMode == MonthlyMode.NTH_WEEKDAY) {
+        byDay?.split(',')?.firstOrNull()?.trim()?.let { token ->
+            val day = token.takeLast(2).toDayOfWeekIgnoringOrdinal()
+            val rfc = token.dropLast(2).toIntOrNull()
+            if (day != null && rfc != null) {
+                NthOrdinal.entries.firstOrNull { it.rfcValue == rfc } to day
+            } else null
+        }
+    } else null
+    val monthlyOrdinal = nthFromByDay?.first ?: NthOrdinal.FIRST
+    val monthlyWeekday = nthFromByDay?.second ?: dtStartLocal.date.dayOfWeek
     val count = alarm.count
     val until = alarm.until
     val end = when {
@@ -2104,7 +1970,22 @@ private fun parseIntervalAlarm(alarm: Alarm.RecurringTime, tz: TimeZone): Interv
         until != null -> EndChoice.OnDate(until.toLocalDateTime(tz).date)
         else -> EndChoice.Never
     }
-    return IntervalFormDefaults(unit, value, weekdays, end, alarm.dtStart)
+    return IntervalFormDefaults(
+        unit = unit,
+        value = value,
+        weekdays = weekdays,
+        end = end,
+        dtStart = alarm.dtStart,
+        monthlyMode = monthlyMode,
+        monthlyDay = monthlyDay,
+        monthlyOrdinal = monthlyOrdinal,
+        monthlyWeekday = monthlyWeekday,
+    )
+}
+
+private fun byDayHasOrdinal(byDay: String): Boolean = byDay.split(',').any { token ->
+    val trimmed = token.trim()
+    trimmed.length > 2 && trimmed.dropLast(2).toIntOrNull() != null
 }
 
 private fun String.toDayOfWeekIgnoringOrdinal(): DayOfWeek? {
@@ -2126,147 +2007,35 @@ private fun buildIntervalRule(
     value: Int,
     unit: IntervalUnit,
     weekdays: Set<DayOfWeek>,
-): String {
-    val freq = if (unit == IntervalUnit.MINUTES) "MINUTELY" else "HOURLY"
-    return buildString {
-        append("FREQ=$freq;INTERVAL=$value")
-        if (weekdays.isNotEmpty() && weekdays.size < 7) {
-            val days = weekdays
-                .sortedBy { it.isoDayNumber }
-                .joinToString(",") { it.rruleCode() }
-            append(";BYDAY=$days")
-        }
-    }
-}
-
-private data class CalendarFormDefaults(
-    val freq: CalendarFreq,
-    val interval: Int,
-    val weeklyDays: Set<DayOfWeek>,
-    val monthlyMode: MonthlyMode,
-    val monthlyDay: Int?,
-    val monthlyOrdinal: NthOrdinal?,
-    val monthlyWeekday: DayOfWeek?,
-    val dtStart: Instant,
-    val end: EndChoice,
-)
-
-/**
- * Inverse of [buildCalendarRule]: extracts the calendar-form fields from an
- * existing recurring alarm. Pattern values (day-of-month, Nth weekday, target
- * month) live on `dtStart` — only `freq`, `interval`, `weeklyDays`, and the
- * monthly/yearly date-vs-Nth toggle are read from the rule string. Returns
- * `null` for sub-day frequencies (the user is switching alarm type).
- */
-private fun parseCalendarAlarm(alarm: Alarm.RecurringTime, tz: TimeZone): CalendarFormDefaults? {
-    val parts = alarm.rule
-        .split(';')
-        .mapNotNull { piece ->
-            val eq = piece.indexOf('=')
-            if (eq <= 0) null
-            else piece.substring(0, eq).trim().uppercase() to piece.substring(eq + 1).trim()
-        }
-        .toMap()
-
-    val freq = when (parts["FREQ"]?.uppercase()) {
-        "DAILY" -> CalendarFreq.DAILY
-        "WEEKLY" -> CalendarFreq.WEEKLY
-        "MONTHLY" -> CalendarFreq.MONTHLY
-        "YEARLY" -> CalendarFreq.YEARLY
-        else -> return null
-    }
-    val interval = parts["INTERVAL"]?.toIntOrNull()?.coerceAtLeast(1) ?: 1
-    val weeklyDays = if (freq == CalendarFreq.WEEKLY) {
-        parts["BYDAY"]
-            ?.split(',')
-            ?.mapNotNull { it.toDayOfWeekIgnoringOrdinal() }
-            ?.toSet()
-            ?: emptySet()
-    } else emptySet()
-    val monthlyMode = if (freq == CalendarFreq.MONTHLY || freq == CalendarFreq.YEARLY) {
-        val byDay = parts["BYDAY"]
-        if (byDay != null && byDayHasOrdinal(byDay)) MonthlyMode.NTH_WEEKDAY
-        else MonthlyMode.DAY_OF_MONTH
-    } else MonthlyMode.DAY_OF_MONTH
-
-    val monthlyDay = if (freq == CalendarFreq.MONTHLY && monthlyMode == MonthlyMode.DAY_OF_MONTH) {
-        parts["BYMONTHDAY"]?.split(',')?.firstNotNullOfOrNull { it.toIntOrNull() }
-    } else null
-
-    val nthFromByDay = if (freq == CalendarFreq.MONTHLY && monthlyMode == MonthlyMode.NTH_WEEKDAY) {
-        parts["BYDAY"]?.split(',')?.firstOrNull()?.trim()?.let { token ->
-            val day = token.takeLast(2).toDayOfWeekIgnoringOrdinal()
-            val rfc = token.dropLast(2).toIntOrNull()
-            if (day != null && rfc != null) {
-                NthOrdinal.entries.firstOrNull { it.rfcValue == rfc } to day
-            } else null
-        }
-    } else null
-
-    val count = alarm.count
-    val until = alarm.until
-    val end = when {
-        count != null -> EndChoice.AfterCount(count)
-        until != null -> EndChoice.OnDate(until.toLocalDateTime(tz).date)
-        else -> EndChoice.Never
-    }
-
-    return CalendarFormDefaults(
-        freq = freq,
-        interval = interval,
-        weeklyDays = weeklyDays,
-        monthlyMode = monthlyMode,
-        monthlyDay = monthlyDay,
-        monthlyOrdinal = nthFromByDay?.first,
-        monthlyWeekday = nthFromByDay?.second,
-        dtStart = alarm.dtStart,
-        end = end,
-    )
-}
-
-private fun byDayHasOrdinal(byDay: String): Boolean = byDay.split(',').any { token ->
-    val trimmed = token.trim()
-    trimmed.length > 2 && trimmed.dropLast(2).toIntOrNull() != null
-}
-
-private fun buildCalendarRule(
-    freq: CalendarFreq,
-    interval: Int,
-    weeklyDays: Set<DayOfWeek>,
     monthlyMode: MonthlyMode,
     monthlyDay: Int,
     monthlyOrdinal: NthOrdinal,
     monthlyWeekday: DayOfWeek,
-    dtStartDate: LocalDate,
 ): String {
-    val freqStr = when (freq) {
-        CalendarFreq.DAILY -> "DAILY"
-        CalendarFreq.WEEKLY -> "WEEKLY"
-        CalendarFreq.MONTHLY -> "MONTHLY"
-        CalendarFreq.YEARLY -> "YEARLY"
+    val freq = when (unit) {
+        IntervalUnit.MINUTES -> "MINUTELY"
+        IntervalUnit.HOURS -> "HOURLY"
+        IntervalUnit.DAYS -> "DAILY"
+        IntervalUnit.WEEKS -> "WEEKLY"
+        IntervalUnit.MONTHS -> "MONTHLY"
+        IntervalUnit.YEARS -> "YEARLY"
     }
     return buildString {
-        append("FREQ=$freqStr;INTERVAL=$interval")
-        when (freq) {
-            CalendarFreq.WEEKLY -> {
-                if (weeklyDays.size in 1..6) {
-                    val days = weeklyDays
-                        .sortedBy { it.isoDayNumber }
-                        .joinToString(",") { it.rruleCode() }
-                    append(";BYDAY=$days")
-                }
-            }
-            CalendarFreq.MONTHLY -> when (monthlyMode) {
+        append("FREQ=$freq;INTERVAL=$value")
+        if (unit == IntervalUnit.MONTHS) {
+            // Monthly uses its own pattern slot (BYMONTHDAY for "day N", ordinal BYDAY
+            // for "the Nth weekday"); the "On" weekday chips don't apply.
+            when (monthlyMode) {
                 MonthlyMode.DAY_OF_MONTH -> append(";BYMONTHDAY=$monthlyDay")
                 MonthlyMode.NTH_WEEKDAY -> append(
                     ";BYDAY=${monthlyOrdinal.rfcValue}${monthlyWeekday.rruleCode()}"
                 )
             }
-            CalendarFreq.YEARLY -> {
-                append(";BYMONTH=${dtStartDate.month.number}")
-                append(";BYMONTHDAY=${dtStartDate.day}")
-            }
-            CalendarFreq.DAILY -> Unit
+        } else if (weekdays.isNotEmpty() && weekdays.size < 7) {
+            val days = weekdays
+                .sortedBy { it.isoDayNumber }
+                .joinToString(",") { it.rruleCode() }
+            append(";BYDAY=$days")
         }
     }
 }
@@ -2279,21 +2048,6 @@ private fun DayOfWeek.fullLabel(): String = when (this) {
     DayOfWeek.FRIDAY -> "Friday"
     DayOfWeek.SATURDAY -> "Saturday"
     DayOfWeek.SUNDAY -> "Sunday"
-}
-
-private fun Month.fullLabel(): String = when (this) {
-    Month.JANUARY -> "January"
-    Month.FEBRUARY -> "February"
-    Month.MARCH -> "March"
-    Month.APRIL -> "April"
-    Month.MAY -> "May"
-    Month.JUNE -> "June"
-    Month.JULY -> "July"
-    Month.AUGUST -> "August"
-    Month.SEPTEMBER -> "September"
-    Month.OCTOBER -> "October"
-    Month.NOVEMBER -> "November"
-    Month.DECEMBER -> "December"
 }
 
 private fun DayOfWeek.rruleCode(): String = when (this) {
