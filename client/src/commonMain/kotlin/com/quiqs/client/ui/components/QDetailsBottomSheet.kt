@@ -1247,10 +1247,10 @@ private fun IntervalForm(
 
     // Switching unit resets the count to a sensible default for that unit; switching
     // back to a unit you already had keeps whatever the user had typed.
-    val pickUnit: (IntervalUnit, String) -> Unit = { picked, default ->
+    val pickUnit: (IntervalUnit) -> Unit = { picked ->
         if (unit != picked) {
             unit = picked
-            valueText = default
+            valueText = if (picked == IntervalUnit.MINUTES) "15" else "1"
         }
     }
 
@@ -1274,25 +1274,23 @@ private fun IntervalForm(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             FormFieldLabel("Every")
-            // Six unit chips plus the number field — FlowRow wraps onto a second line
-            // on narrower screens rather than letting any chip clip.
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-                itemVerticalAlignment = Alignment.CenterVertically,
+            // Reads as a sentence: "Every [15] [minutes ▾]". The unit cell is a
+            // dropdown rather than a wrapping row of chips because the chips don't
+            // fit on one line at typical phone widths.
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 NumberField(
                     text = valueText,
                     onTextChange = { valueText = it },
                 )
-                // Singular when the count is 1 ("1 minute"), plural otherwise.
-                val unitLabel: (String) -> String = { s -> if (valueInt == 1) s else s + "s" }
-                ToggleChip(unitLabel("minute"), unit == IntervalUnit.MINUTES) { pickUnit(IntervalUnit.MINUTES, "15") }
-                ToggleChip(unitLabel("hour"), unit == IntervalUnit.HOURS) { pickUnit(IntervalUnit.HOURS, "1") }
-                ToggleChip(unitLabel("day"), unit == IntervalUnit.DAYS) { pickUnit(IntervalUnit.DAYS, "1") }
-                ToggleChip(unitLabel("week"), unit == IntervalUnit.WEEKS) { pickUnit(IntervalUnit.WEEKS, "1") }
-                ToggleChip(unitLabel("month"), unit == IntervalUnit.MONTHS) { pickUnit(IntervalUnit.MONTHS, "1") }
-                ToggleChip(unitLabel("year"), unit == IntervalUnit.YEARS) { pickUnit(IntervalUnit.YEARS, "1") }
+                DropdownPicker(
+                    selected = unit,
+                    options = IntervalUnit.entries.toList(),
+                    labelOf = { it.label(valueInt) },
+                    onSelect = { pickUnit(it) },
+                )
             }
         }
     }
@@ -1547,6 +1545,18 @@ private fun IntervalForm(
 }
 
 private enum class IntervalUnit { MINUTES, HOURS, DAYS, WEEKS, MONTHS, YEARS }
+
+private fun IntervalUnit.label(count: Int): String {
+    val singular = when (this) {
+        IntervalUnit.MINUTES -> "minute"
+        IntervalUnit.HOURS -> "hour"
+        IntervalUnit.DAYS -> "day"
+        IntervalUnit.WEEKS -> "week"
+        IntervalUnit.MONTHS -> "month"
+        IntervalUnit.YEARS -> "year"
+    }
+    return if (count == 1) singular else singular + "s"
+}
 
 private enum class MonthlyMode { DAY_OF_MONTH, NTH_WEEKDAY }
 
