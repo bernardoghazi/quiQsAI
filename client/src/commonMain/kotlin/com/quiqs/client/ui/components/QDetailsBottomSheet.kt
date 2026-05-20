@@ -1285,12 +1285,14 @@ private fun IntervalForm(
                     text = valueText,
                     onTextChange = { valueText = it },
                 )
-                ToggleChip("minutes", unit == IntervalUnit.MINUTES) { pickUnit(IntervalUnit.MINUTES, "15") }
-                ToggleChip("hours", unit == IntervalUnit.HOURS) { pickUnit(IntervalUnit.HOURS, "1") }
-                ToggleChip("days", unit == IntervalUnit.DAYS) { pickUnit(IntervalUnit.DAYS, "1") }
-                ToggleChip("weeks", unit == IntervalUnit.WEEKS) { pickUnit(IntervalUnit.WEEKS, "1") }
-                ToggleChip("months", unit == IntervalUnit.MONTHS) { pickUnit(IntervalUnit.MONTHS, "1") }
-                ToggleChip("years", unit == IntervalUnit.YEARS) { pickUnit(IntervalUnit.YEARS, "1") }
+                // Singular when the count is 1 ("1 minute"), plural otherwise.
+                val unitLabel: (String) -> String = { s -> if (valueInt == 1) s else s + "s" }
+                ToggleChip(unitLabel("minute"), unit == IntervalUnit.MINUTES) { pickUnit(IntervalUnit.MINUTES, "15") }
+                ToggleChip(unitLabel("hour"), unit == IntervalUnit.HOURS) { pickUnit(IntervalUnit.HOURS, "1") }
+                ToggleChip(unitLabel("day"), unit == IntervalUnit.DAYS) { pickUnit(IntervalUnit.DAYS, "1") }
+                ToggleChip(unitLabel("week"), unit == IntervalUnit.WEEKS) { pickUnit(IntervalUnit.WEEKS, "1") }
+                ToggleChip(unitLabel("month"), unit == IntervalUnit.MONTHS) { pickUnit(IntervalUnit.MONTHS, "1") }
+                ToggleChip(unitLabel("year"), unit == IntervalUnit.YEARS) { pickUnit(IntervalUnit.YEARS, "1") }
             }
         }
     }
@@ -1383,7 +1385,7 @@ private fun IntervalForm(
                     )
                     DropdownPicker(
                         selected = monthlyWeekday,
-                        options = SUNDAY_FIRST_WEEKDAYS,
+                        options = WEEKDAYS_ORDERED,
                         labelOf = { it.fullLabel() },
                         onSelect = { monthlyWeekday = it },
                     )
@@ -1561,11 +1563,6 @@ private enum class NthOrdinal(val rfcValue: Int, val label: String) {
     LAST(-1, "last"),
 }
 
-private val SUNDAY_FIRST_WEEKDAYS = listOf(
-    DayOfWeek.SUNDAY, DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY,
-    DayOfWeek.THURSDAY, DayOfWeek.FRIDAY, DayOfWeek.SATURDAY,
-)
-
 private sealed class EndChoice {
     data object Never : EndChoice()
     data class OnDate(val date: LocalDate) : EndChoice()
@@ -1573,10 +1570,10 @@ private sealed class EndChoice {
 }
 
 private val WEEKDAYS_ORDERED = listOf(
-    DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY,
-    DayOfWeek.FRIDAY, DayOfWeek.SATURDAY, DayOfWeek.SUNDAY,
+    DayOfWeek.SUNDAY, DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY,
+    DayOfWeek.THURSDAY, DayOfWeek.FRIDAY, DayOfWeek.SATURDAY,
 )
-private val WEEKDAY_CHIP_LABELS = listOf("M", "T", "W", "T", "F", "S", "S")
+private val WEEKDAY_CHIP_LABELS = listOf("S", "M", "T", "W", "T", "F", "S")
 
 @Composable
 private fun NumberField(
