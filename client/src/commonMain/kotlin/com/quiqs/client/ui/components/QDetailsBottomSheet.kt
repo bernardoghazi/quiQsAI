@@ -1225,14 +1225,25 @@ private fun IntervalForm(
     var monthlyDay by remember { mutableStateOf(seed?.monthlyDay ?: seedStartLocal.date.day) }
     var monthlyOrdinal by remember { mutableStateOf(seed?.monthlyOrdinal ?: NthOrdinal.FIRST) }
     var monthlyWeekday by remember { mutableStateOf(seed?.monthlyWeekday ?: seedStartLocal.date.dayOfWeek) }
+    // Between-hours window for MINUTELY/HOURLY. Defaults to (0, 0) — both pickers
+    // show "12:00 AM" and the rule emits no BYHOUR clause. Picking a non-trivial
+    // window (start < end) enables the filter.
+    var betweenStartHour by remember { mutableStateOf(seed?.betweenStartHour ?: 0) }
+    var betweenEndHour by remember { mutableStateOf(seed?.betweenEndHour ?: 0) }
 
     var dtStartDatePickerOpen by remember { mutableStateOf(false) }
     var dtStartTimePickerOpen by remember { mutableStateOf(false) }
     var untilDatePickerOpen by remember { mutableStateOf(false) }
+    var betweenStartPickerOpen by remember { mutableStateOf(false) }
+    var betweenEndPickerOpen by remember { mutableStateOf(false) }
 
-    // Weekday chips don't apply when unit is months — the monthly pattern UI owns
-    // that slot — so the empty-weekdays guard is only required for the other units.
-    val canSave = valueInt >= 1 && (unit == IntervalUnit.MONTHS || weekdays.isNotEmpty())
+    // ON DAYS OF WEEK only surfaces for sub-day units and weekly, so weekdays only
+    // need to be non-empty in those cases. Other units don't render the section,
+    // so the user can't strand themselves with an empty set.
+    val weekdaysApply = unit == IntervalUnit.MINUTES ||
+        unit == IntervalUnit.HOURS ||
+        unit == IntervalUnit.WEEKS
+    val canSave = valueInt >= 1 && (!weekdaysApply || weekdays.isNotEmpty())
 
     // Switching unit resets the count to a sensible default for that unit; switching
     // back to a unit you already had keeps whatever the user had typed.
@@ -1253,78 +1264,135 @@ private fun IntervalForm(
     ) {
         BuilderHeader(title = "Interval alarm", onBack = onBack)
     }
-    // Every
+    // EVERY — always shown, holds only the number + unit chips. The monthly pattern
+    // now lives in its own section below.
     SheetSection(shape = RoundedCornerShape(4.dp)) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = SHEET_SECTION_HORIZONTAL_PADDING.dp, vertical = 18.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                FormFieldLabel("Every")
-                // Six unit chips plus the number field — FlowRow wraps onto a second
-                // line on narrower screens rather than letting any chip clip.
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                    itemVerticalAlignment = Alignment.CenterVertically,
-                ) {
-                    NumberField(
-                        text = valueText,
-                        onTextChange = { valueText = it },
-                    )
-                    ToggleChip("minutes", unit == IntervalUnit.MINUTES) { pickUnit(IntervalUnit.MINUTES, "15") }
-                    ToggleChip("hours", unit == IntervalUnit.HOURS) { pickUnit(IntervalUnit.HOURS, "1") }
-                    ToggleChip("days", unit == IntervalUnit.DAYS) { pickUnit(IntervalUnit.DAYS, "1") }
-                    ToggleChip("weeks", unit == IntervalUnit.WEEKS) { pickUnit(IntervalUnit.WEEKS, "1") }
-                    ToggleChip("months", unit == IntervalUnit.MONTHS) { pickUnit(IntervalUnit.MONTHS, "1") }
-                    ToggleChip("years", unit == IntervalUnit.YEARS) { pickUnit(IntervalUnit.YEARS, "1") }
-                }
+            FormFieldLabel("Every")
+            // Six unit chips plus the number field — FlowRow wraps onto a second line
+            // on narrower screens rather than letting any chip clip.
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+                itemVerticalAlignment = Alignment.CenterVertically,
+            ) {
+                NumberField(
+                    text = valueText,
+                    onTextChange = { valueText = it },
+                )
+                ToggleChip("minutes", unit == IntervalUnit.MINUTES) { pickUnit(IntervalUnit.MINUTES, "15") }
+                ToggleChip("hours", unit == IntervalUnit.HOURS) { pickUnit(IntervalUnit.HOURS, "1") }
+                ToggleChip("days", unit == IntervalUnit.DAYS) { pickUnit(IntervalUnit.DAYS, "1") }
+                ToggleChip("weeks", unit == IntervalUnit.WEEKS) { pickUnit(IntervalUnit.WEEKS, "1") }
+                ToggleChip("months", unit == IntervalUnit.MONTHS) { pickUnit(IntervalUnit.MONTHS, "1") }
+                ToggleChip("years", unit == IntervalUnit.YEARS) { pickUnit(IntervalUnit.YEARS, "1") }
             }
+        }
+    }
 
-            // Monthly pattern — only relevant when unit is months. Day-of-month emits
-            // BYMONTHDAY; the Nth-weekday row emits an ordinal BYDAY (`1MO` = first
-            // Monday, `-1FR` = last Friday). The "On" section is hidden when this is
-            // visible because they'd both fight for the BYDAY slot.
-            if (unit == IntervalUnit.MONTHS) {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    RadioContentRow(
-                        selected = monthlyMode == MonthlyMode.DAY_OF_MONTH,
-                        onClick = { monthlyMode = MonthlyMode.DAY_OF_MONTH },
-                    ) {
-                        InlineLabel("Day")
-                        DropdownPicker(
-                            selected = monthlyDay,
-                            options = (1..31).toList(),
-                            labelOf = { it.toString() },
-                            onSelect = { monthlyDay = it },
-                        )
-                        InlineLabel("of the month")
+    // MINUTES / HOURS — ON DAYS OF WEEK + BETWEEN HOURS share one section.
+    if (unit == IntervalUnit.MINUTES || unit == IntervalUnit.HOURS) {
+        SheetSection(shape = RoundedCornerShape(4.dp)) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = SHEET_SECTION_HORIZONTAL_PADDING.dp, vertical = 18.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FormFieldLabel("On")
+                    WeekdayChips(selected = weekdays) { day ->
+                        weekdays = if (day in weekdays) weekdays - day else weekdays + day
                     }
-                    RadioContentRow(
-                        selected = monthlyMode == MonthlyMode.NTH_WEEKDAY,
-                        onClick = { monthlyMode = MonthlyMode.NTH_WEEKDAY },
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FormFieldLabel("Between")
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        InlineLabel("The")
-                        DropdownPicker(
-                            selected = monthlyOrdinal,
-                            options = NthOrdinal.entries.toList(),
-                            labelOf = { it.label },
-                            onSelect = { monthlyOrdinal = it },
+                        StartingCell(
+                            text = formatTimeLabel(betweenStartHour, 0),
+                            onClick = { betweenStartPickerOpen = true },
                         )
-                        DropdownPicker(
-                            selected = monthlyWeekday,
-                            options = SUNDAY_FIRST_WEEKDAYS,
-                            labelOf = { it.fullLabel() },
-                            onSelect = { monthlyWeekday = it },
+                        InlineLabel("and")
+                        StartingCell(
+                            text = formatTimeLabel(betweenEndHour, 0),
+                            onClick = { betweenEndPickerOpen = true },
                         )
                     }
                 }
             }
         }
     }
-    // Starting
+
+    // WEEKS — ON DAYS OF WEEK as its own section.
+    if (unit == IntervalUnit.WEEKS) {
+        SheetSection(shape = RoundedCornerShape(4.dp)) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = SHEET_SECTION_HORIZONTAL_PADDING.dp, vertical = 18.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                FormFieldLabel("On")
+                WeekdayChips(selected = weekdays) { day ->
+                    weekdays = if (day in weekdays) weekdays - day else weekdays + day
+                }
+            }
+        }
+    }
+
+    // MONTHS — pattern: day-of-month OR Nth weekday.
+    if (unit == IntervalUnit.MONTHS) {
+        SheetSection(shape = RoundedCornerShape(4.dp)) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = SHEET_SECTION_HORIZONTAL_PADDING.dp, vertical = 18.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                RadioContentRow(
+                    selected = monthlyMode == MonthlyMode.DAY_OF_MONTH,
+                    onClick = { monthlyMode = MonthlyMode.DAY_OF_MONTH },
+                ) {
+                    InlineLabel("Day")
+                    DropdownPicker(
+                        selected = monthlyDay,
+                        options = (1..31).toList(),
+                        labelOf = { it.toString() },
+                        onSelect = { monthlyDay = it },
+                    )
+                    InlineLabel("of the month")
+                }
+                RadioContentRow(
+                    selected = monthlyMode == MonthlyMode.NTH_WEEKDAY,
+                    onClick = { monthlyMode = MonthlyMode.NTH_WEEKDAY },
+                ) {
+                    InlineLabel("The")
+                    DropdownPicker(
+                        selected = monthlyOrdinal,
+                        options = NthOrdinal.entries.toList(),
+                        labelOf = { it.label },
+                        onSelect = { monthlyOrdinal = it },
+                    )
+                    DropdownPicker(
+                        selected = monthlyWeekday,
+                        options = SUNDAY_FIRST_WEEKDAYS,
+                        labelOf = { it.fullLabel() },
+                        onSelect = { monthlyWeekday = it },
+                    )
+                }
+            }
+        }
+    }
+
+    // STARTING — always shown.
     SheetSection(shape = RoundedCornerShape(4.dp)) {
         Column(
             modifier = Modifier
@@ -1349,24 +1417,7 @@ private fun IntervalForm(
             }
         }
     }
-    // On — the monthly pattern UI in the Every section owns BYDAY when unit is months,
-    // so this section drops out entirely to avoid conflicting BYDAY semantics.
-    if (unit != IntervalUnit.MONTHS) {
-        SheetSection(shape = RoundedCornerShape(4.dp)) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = SHEET_SECTION_HORIZONTAL_PADDING.dp, vertical = 18.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                FormFieldLabel("On")
-                WeekdayChips(selected = weekdays) { day ->
-                    weekdays = if (day in weekdays) weekdays - day else weekdays + day
-                }
-            }
-        }
-    }
-    // Ends
+    // ENDS — always shown.
     SheetSection(shape = RoundedCornerShape(4.dp)) {
         Column(
             modifier = Modifier
@@ -1408,6 +1459,8 @@ private fun IntervalForm(
                         monthlyDay = monthlyDay,
                         monthlyOrdinal = monthlyOrdinal,
                         monthlyWeekday = monthlyWeekday,
+                        betweenStartHour = betweenStartHour,
+                        betweenEndHour = betweenEndHour,
                     )
                     val until = (end as? EndChoice.OnDate)?.date
                         ?.atTime(23, 59)
@@ -1462,6 +1515,30 @@ private fun IntervalForm(
             onConfirm = { picked ->
                 end = EndChoice.OnDate(picked)
                 untilDatePickerOpen = false
+            },
+        )
+    }
+    // Between-hours pickers reuse the regular TimePickerOverlay; we save just the
+    // hour and drop the minute since BYHOUR is hour-grained. Picking 9:45 stores 9.
+    if (betweenStartPickerOpen) {
+        TimePickerOverlay(
+            initialHour = betweenStartHour,
+            initialMinute = 0,
+            onDismiss = { betweenStartPickerOpen = false },
+            onConfirm = { h, _ ->
+                betweenStartHour = h
+                betweenStartPickerOpen = false
+            },
+        )
+    }
+    if (betweenEndPickerOpen) {
+        TimePickerOverlay(
+            initialHour = betweenEndHour,
+            initialMinute = 0,
+            onDismiss = { betweenEndPickerOpen = false },
+            onConfirm = { h, _ ->
+                betweenEndHour = h
+                betweenEndPickerOpen = false
             },
         )
     }
@@ -1902,6 +1979,11 @@ private data class IntervalFormDefaults(
     val monthlyDay: Int,
     val monthlyOrdinal: NthOrdinal,
     val monthlyWeekday: DayOfWeek,
+    // Between-hours window for MINUTELY/HOURLY rules. End is exclusive: 9..17 means
+    // fires can land in hours 9..16 inclusive. (0, 0) means "no window" (BYHOUR
+    // absent in the rule).
+    val betweenStartHour: Int,
+    val betweenEndHour: Int,
 )
 
 /**
@@ -1963,6 +2045,16 @@ private fun parseIntervalAlarm(alarm: Alarm.RecurringTime, tz: TimeZone): Interv
     } else null
     val monthlyOrdinal = nthFromByDay?.first ?: NthOrdinal.FIRST
     val monthlyWeekday = nthFromByDay?.second ?: dtStartLocal.date.dayOfWeek
+    val byHourValues = parts["BYHOUR"]
+        ?.split(',')
+        ?.mapNotNull { it.trim().toIntOrNull() }
+        ?.filter { it in 0..23 }
+        ?.sorted()
+    val (betweenStartHour, betweenEndHour) = if (!byHourValues.isNullOrEmpty()) {
+        byHourValues.first() to (byHourValues.last() + 1).coerceAtMost(24)
+    } else {
+        0 to 0
+    }
     val count = alarm.count
     val until = alarm.until
     val end = when {
@@ -1980,6 +2072,8 @@ private fun parseIntervalAlarm(alarm: Alarm.RecurringTime, tz: TimeZone): Interv
         monthlyDay = monthlyDay,
         monthlyOrdinal = monthlyOrdinal,
         monthlyWeekday = monthlyWeekday,
+        betweenStartHour = betweenStartHour,
+        betweenEndHour = betweenEndHour,
     )
 }
 
@@ -2011,6 +2105,8 @@ private fun buildIntervalRule(
     monthlyDay: Int,
     monthlyOrdinal: NthOrdinal,
     monthlyWeekday: DayOfWeek,
+    betweenStartHour: Int,
+    betweenEndHour: Int,
 ): String {
     val freq = when (unit) {
         IntervalUnit.MINUTES -> "MINUTELY"
@@ -2020,22 +2116,37 @@ private fun buildIntervalRule(
         IntervalUnit.MONTHS -> "MONTHLY"
         IntervalUnit.YEARS -> "YEARLY"
     }
+    val byDayApplies = unit == IntervalUnit.MINUTES ||
+        unit == IntervalUnit.HOURS ||
+        unit == IntervalUnit.WEEKS
+    val byHourApplies = unit == IntervalUnit.MINUTES || unit == IntervalUnit.HOURS
     return buildString {
         append("FREQ=$freq;INTERVAL=$value")
         if (unit == IntervalUnit.MONTHS) {
             // Monthly uses its own pattern slot (BYMONTHDAY for "day N", ordinal BYDAY
-            // for "the Nth weekday"); the "On" weekday chips don't apply.
+            // for "the Nth weekday"); other units' BYDAY semantics don't apply.
             when (monthlyMode) {
                 MonthlyMode.DAY_OF_MONTH -> append(";BYMONTHDAY=$monthlyDay")
                 MonthlyMode.NTH_WEEKDAY -> append(
                     ";BYDAY=${monthlyOrdinal.rfcValue}${monthlyWeekday.rruleCode()}"
                 )
             }
-        } else if (weekdays.isNotEmpty() && weekdays.size < 7) {
+        } else if (byDayApplies && weekdays.isNotEmpty() && weekdays.size < 7) {
             val days = weekdays
                 .sortedBy { it.isoDayNumber }
                 .joinToString(",") { it.rruleCode() }
             append(";BYDAY=$days")
+        }
+        // BYHOUR is end-exclusive ("between 9 and 17" → hours 9..16). Skipped when
+        // the window is trivial (start >= end) or covers the full day.
+        if (byHourApplies &&
+            betweenStartHour in 0..23 &&
+            betweenEndHour in 1..24 &&
+            betweenStartHour < betweenEndHour &&
+            !(betweenStartHour == 0 && betweenEndHour == 24)
+        ) {
+            val hours = (betweenStartHour until betweenEndHour).joinToString(",")
+            append(";BYHOUR=$hours")
         }
     }
 }
