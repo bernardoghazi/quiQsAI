@@ -97,6 +97,8 @@ fun QListScreen(
 
     val vm: QListViewModel = viewModel { QListViewModel(agentProvider, recorderProvider, repository) }
     val voiceState by vm.voiceState.collectAsState()
+    val streamingDraft by vm.streamingDraft.collectAsState()
+    val streamingActive by vm.streamingActive.collectAsState()
     LaunchedEffect(vm, onFilterSortApplied) {
         vm.filterSortApplied.collect { onFilterSortApplied(it) }
     }
@@ -109,6 +111,33 @@ fun QListScreen(
     // seeded from that Q) or the bottom bar's `+` (empty draft); cleared on dismiss
     // (scrim tap or back press), discarding anything the user typed/recorded.
     var sheetRequest by remember { mutableStateOf<SheetRequest?>(null) }
+
+    // Open the sheet as soon as the VM detects "type":"create" in the streaming
+    // LLM output. The sheet then follows `streamingDraft` for live-fill until
+    // streaming ends; Save calls repository.create with whatever's in the draft
+    // at that point.
+    LaunchedEffect(vm) {
+        vm.openCreateSheet.collect {
+            sheetRequest = SheetRequest(
+                initial = QDraft(),
+                onSave = { draft ->
+                    scope.launch {
+                        repository.create(
+                            text = draft.text,
+                            tags = draft.tags,
+                            alarms = draft.alarms,
+                            priority = draft.priority,
+                            completed = draft.completed,
+                            voiceNotePath = draft.voiceNotePath,
+                        )
+                        sheetRequest = null
+                        vm.clearStreamingDraft()
+                    }
+                },
+                fromVoiceStream = true,
+            )
+        }
+    }
 
     // The Q currently pending deletion, surfaced through a confirmation dialog. Set
     // when the user swipes a card past the dismiss threshold; cleared on confirm
@@ -329,8 +358,13 @@ fun QListScreen(
             recorderProvider = recorderProvider,
             playerProvider = playerProvider,
             onSave = request.onSave,
-            onDismiss = { sheetRequest = null },
+            onDismiss = {
+                sheetRequest = null
+                if (request.fromVoiceStream) vm.clearStreamingDraft()
+            },
             onDelete = request.onDelete,
+            streamingDraft = if (request.fromVoiceStream) streamingDraft else null,
+            streaming = request.fromVoiceStream && streamingActive,
         )
     }
 
@@ -365,9 +399,14 @@ fun QListScreen(
  * source Q's id; the `+` path doesn't — each call site builds its own [onSave]. The
  * `+` path leaves [onDelete] null so the trash affordance is hidden when there's no Q
  * to delete yet.
+ *
+ * [fromVoiceStream] marks the sheet as live-following the voice flow; the screen
+ * subscribes to the VM's streaming-draft and lock-state flows and feeds them into
+ * the sheet as overrides.
  */
 private data class SheetRequest(
     val initial: QDraft,
     val onSave: (QDraft) -> Unit,
     val onDelete: (() -> Unit)? = null,
+    val fromVoiceStream: Boolean = false,
 )

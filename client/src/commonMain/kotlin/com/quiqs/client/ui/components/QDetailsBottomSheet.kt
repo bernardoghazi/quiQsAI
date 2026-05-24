@@ -46,6 +46,7 @@ import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -153,6 +154,16 @@ fun QDetailsBottomSheet(
     // non-null in the edit flow. The caller is expected to dismiss the sheet and
     // route through its own confirmation flow.
     onDelete: (() -> Unit)? = null,
+    // Live-streamed draft from the voice flow. When non-null, the sheet's editable
+    // fields are overridden by this value each time it changes (LLM produces a new
+    // field). When it transitions to null, local state retains the last applied
+    // value; subsequent edits don't get overwritten.
+    streamingDraft: QDraft? = null,
+    // True only while the LLM is still emitting. Independent of [streamingDraft]
+    // because we want Save to unlock the moment streaming finishes, even though
+    // the draft itself (with voice-note path attached) lingers until the user
+    // dismisses or saves.
+    streaming: Boolean = false,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(
@@ -173,6 +184,8 @@ fun QDetailsBottomSheet(
             playerProvider = playerProvider,
             onSave = onSave,
             onDelete = onDelete,
+            streamingDraft = streamingDraft,
+            streaming = streaming,
         )
     }
 }
@@ -196,6 +209,8 @@ private fun QDetailsBottomSheetContent(
     playerProvider: PlayerProvider = NoPlayer,
     onSave: (QDraft) -> Unit = {},
     onDelete: (() -> Unit)? = null,
+    streamingDraft: QDraft? = null,
+    streaming: Boolean = false,
 ) {
     // Re-mounting the sheet (dismiss → reopen) gives us fresh state, so plain `remember`
     // is fine — no need to key on `initial`.
@@ -204,6 +219,24 @@ private fun QDetailsBottomSheetContent(
     var draftAlarms by remember { mutableStateOf(initial.alarms) }
     var draftPriority by remember { mutableStateOf(initial.priority) }
     var draftCompleted by remember { mutableStateOf(initial.completed) }
+    // Tags state is local now too — needed so the streaming flow can update the
+    // chips after the sheet is composed.
+    var draftTags by remember { mutableStateOf(initial.tags) }
+
+    // While the LLM is streaming a new Q, the VM emits incremental QDraft snapshots.
+    // Each snapshot becomes the new local state. When streamingDraft transitions
+    // back to null (stream ended), local state retains the last value and the
+    // user can edit it before tapping Save.
+    LaunchedEffect(streamingDraft) {
+        if (streamingDraft != null) {
+            draftText = streamingDraft.text
+            draftVoiceNotePath = streamingDraft.voiceNotePath
+            draftAlarms = streamingDraft.alarms
+            draftPriority = streamingDraft.priority
+            draftCompleted = streamingDraft.completed
+            draftTags = streamingDraft.tags
+        }
+    }
     // Drives the sheet's internal nav: the main draft form vs. the alarm builder
     // overlay. Driven by the clock action on the main draft and by tapping an
     // existing alarm pill (which pre-fills the builder).
@@ -287,7 +320,7 @@ private fun QDetailsBottomSheetContent(
         }
         val showSection3 = draftAlarms.isNotEmpty() ||
                 priorityTone != null ||
-                initial.tags.isNotEmpty()
+                draftTags.isNotEmpty()
         if (showSection3) {
             SheetSection(shape = RoundedCornerShape(4.dp)) {
                 Column(
@@ -301,7 +334,7 @@ private fun QDetailsBottomSheetContent(
                             onDismiss = { draftAlarms = emptyList() },
                         )
                     }
-                    val hasPills = priorityTone != null || initial.tags.isNotEmpty()
+                    val hasPills = priorityTone != null || draftTags.isNotEmpty()
                     if (hasPills) {
                         FlowRow(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -315,7 +348,7 @@ private fun QDetailsBottomSheetContent(
                                     onDismiss = { draftPriority = Priority.MEDIUM },
                                 )
                             }
-                            initial.tags.forEach { tag ->
+                            draftTags.forEach { tag ->
                                 DismissPill(label = tag, tone = QBadgeTone.Neutral, onDismiss = {})
                             }
                         }
@@ -410,7 +443,9 @@ private fun QDetailsBottomSheetContent(
                         )
                     }
                 }
-                val saveEnabled = draftText.isNotBlank() || draftVoiceNotePath != null
+                // Save is locked while the LLM is still streaming — committing mid-
+                // stream would persist a half-filled Q and race with later updates.
+                val saveEnabled = !streaming && (draftText.isNotBlank() || draftVoiceNotePath != null)
                 TextButton(
                     onClick = {
                         onSave(
@@ -420,6 +455,7 @@ private fun QDetailsBottomSheetContent(
                                 alarms = draftAlarms,
                                 priority = draftPriority,
                                 completed = draftCompleted,
+                                tags = draftTags,
                             )
                         )
                     },

@@ -99,6 +99,45 @@ class QAgent(
         )
 
     /**
+     * Voice variant of new-or-filter that surfaces per-field updates as the JSON
+     * streams in (via [onFieldUpdate]) and returns the parsed command *without*
+     * dispatching it. The caller decides what to do with the result — typically
+     * `Create` is left undispatched (the streaming UI lets the user review and
+     * save manually) while other command variants are dispatched as usual.
+     *
+     * Use this in flows that show a live-filling sheet; for everything else, prefer
+     * the dispatching [newOrFilterFromVoice].
+     */
+    suspend fun newOrFilterFromVoiceStreaming(
+        audioPath: String,
+        onChunk: (String) -> Unit = {},
+        onFieldUpdate: (StreamingFieldUpdate) -> Unit = {},
+    ): QAgentParseOutcome = withContext(Dispatchers.Default) {
+        val extractor = StreamingCommandExtractor()
+        val raw = engine.generate(
+            prompt = promptBuilder.buildPromptAudio(),
+            systemInstruction = promptBuilder.systemForNewOrFilter,
+            audioPath = audioPath,
+            tools = emptyList(),
+            onChunk = { piece ->
+                extractor.accept(piece, onFieldUpdate)
+                onChunk(piece)
+            },
+        )
+        val command = parser.parse(raw).getOrElse { err ->
+            return@withContext QAgentParseOutcome.ParseFailed(raw, err.message ?: "parse error")
+        }
+        QAgentParseOutcome.Parsed(command, raw)
+    }
+
+    /**
+     * Dispatch a command obtained via [newOrFilterFromVoiceStreaming]. Exposed so the
+     * VM can run the dispatch step after deciding (based on the command's type)
+     * whether to dispatch at all.
+     */
+    suspend fun dispatch(command: QCommand): QCommandResult = dispatcher.dispatch(command)
+
+    /**
      * Drives one end-to-end LLM turn off the main thread. Runs inference, parses the
      * output, and dispatches the resulting command. Parse failures are surfaced as
      * [QAgentOutcome.ParseFailed] — callers can show the raw output for debugging.
@@ -124,6 +163,14 @@ class QAgent(
             val result = dispatcher.dispatch(command)
             QAgentOutcome.Handled(command, result, raw)
         }
+}
+
+/** Parse-only result of an LLM turn — no dispatch has run yet. */
+sealed interface QAgentParseOutcome {
+    /** The model returned a valid [QCommand]; caller decides whether to dispatch. */
+    data class Parsed(val command: QCommand, val raw: String) : QAgentParseOutcome
+    /** The model's output could not be parsed. [raw] preserves it for diagnostics. */
+    data class ParseFailed(val raw: String, val reason: String) : QAgentParseOutcome
 }
 
 /** Result of a single [QAgent] invocation. */
