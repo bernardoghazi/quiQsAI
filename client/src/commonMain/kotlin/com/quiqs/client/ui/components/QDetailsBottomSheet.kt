@@ -36,6 +36,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -51,6 +52,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -165,8 +167,29 @@ fun QDetailsBottomSheet(
     // dismisses or saves.
     streaming: Boolean = false,
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var dismissConfirmOpen by remember { mutableStateOf(false) }
+    var dirty by remember { mutableStateOf(false) }
+    // confirmValueChange runs as part of the sheet's animation engine, so a
+    // returned `false` vetoes the Hidden transition *before* the sheet starts
+    // sliding away. That's the only place that intercepts both scrim taps and
+    // back presses without leaving the sheet visually dismissed-but-composed
+    // when the user cancels. We capture the live flags via rememberUpdatedState
+    // because rememberModalBottomSheetState only reads the lambda once.
+    val dirtyRef = rememberUpdatedState(dirty)
+    val sheetState = rememberModalBottomSheetState(
+        skipPartiallyExpanded = true,
+        confirmValueChange = { newValue ->
+            if (newValue == SheetValue.Hidden && dirtyRef.value) {
+                dismissConfirmOpen = true
+                false
+            } else {
+                true
+            }
+        },
+    )
     ModalBottomSheet(
+        // confirmValueChange has already handled the dirty case; this only fires
+        // when the sheet actually reaches Hidden (i.e., untouched draft).
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         containerColor = Color.Transparent,
@@ -186,6 +209,23 @@ fun QDetailsBottomSheet(
             onDelete = onDelete,
             streamingDraft = streamingDraft,
             streaming = streaming,
+            onDirtyChange = { dirty = it },
+        )
+    }
+    if (dismissConfirmOpen) {
+        AlertDialog(
+            onDismissRequest = { dismissConfirmOpen = false },
+            title = { Text("Discard changes?") },
+            text = { Text("Closing will discard anything you haven't saved.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    dismissConfirmOpen = false
+                    onDismiss()
+                }) { Text("Discard") }
+            },
+            dismissButton = {
+                TextButton(onClick = { dismissConfirmOpen = false }) { Text("Cancel") }
+            },
         )
     }
 }
@@ -211,6 +251,7 @@ private fun QDetailsBottomSheetContent(
     onDelete: (() -> Unit)? = null,
     streamingDraft: QDraft? = null,
     streaming: Boolean = false,
+    onDirtyChange: (Boolean) -> Unit = {},
 ) {
     // Re-mounting the sheet (dismiss → reopen) gives us fresh state, so plain `remember`
     // is fine — no need to key on `initial`.
@@ -222,6 +263,12 @@ private fun QDetailsBottomSheetContent(
     // Tags state is local now too — needed so the streaming flow can update the
     // chips after the sheet is composed.
     var draftTags by remember { mutableStateOf(initial.tags) }
+
+    // Baseline that "Undo" reverts to and that the dirty check compares against.
+    // Starts at `initial`, but during streaming each LLM snapshot becomes the new
+    // baseline — so once the stream ends, Undo brings the user back to what the
+    // LLM produced (not the empty pre-stream draft).
+    var baseline by remember { mutableStateOf(initial) }
 
     // While the LLM is streaming a new Q, the VM emits incremental QDraft snapshots.
     // Each snapshot becomes the new local state. When streamingDraft transitions
@@ -235,8 +282,29 @@ private fun QDetailsBottomSheetContent(
             draftPriority = streamingDraft.priority
             draftCompleted = streamingDraft.completed
             draftTags = streamingDraft.tags
+            baseline = streamingDraft
         }
     }
+
+    val currentDraft = QDraft(
+        text = draftText,
+        voiceNotePath = draftVoiceNotePath,
+        alarms = draftAlarms,
+        priority = draftPriority,
+        tags = draftTags,
+        completed = draftCompleted,
+    )
+    // Two distinct notions of "dirty":
+    //   canUndo — current state differs from the Undo baseline (which floats to
+    //     each LLM snapshot during streaming). Gates the Undo button only.
+    //   unsaved — current state differs from the original `initial`. Gates Save
+    //     and the dismiss-confirmation prompt. The voice-stream flow needs this
+    //     split: post-stream the LLM-filled draft equals the baseline (so Undo
+    //     is rightly disabled), but it still differs from the empty initial,
+    //     so Save must remain enabled to persist the LLM's work.
+    val canUndo = currentDraft != baseline
+    val unsaved = currentDraft != initial
+    LaunchedEffect(unsaved) { onDirtyChange(unsaved) }
     // Drives the sheet's internal nav: the main draft form vs. the alarm builder
     // overlay. Driven by the clock action on the main draft and by tapping an
     // existing alarm pill (which pre-fills the builder).
@@ -430,6 +498,27 @@ private fun QDetailsBottomSheetContent(
                     )
                 }
                 Spacer(modifier = Modifier.weight(1f))
+                // Undo — reverts every field back to the baseline (the original Q in
+                // edit mode, an empty draft in create mode, or the LLM's final
+                // snapshot in the voice-stream mode). Disabled when there's nothing
+                // to revert and while the LLM is still streaming.
+                val undoEnabled = canUndo && !streaming
+                TextButton(
+                    enabled = undoEnabled,
+                    onClick = {
+                        draftText = baseline.text
+                        draftVoiceNotePath = baseline.voiceNotePath
+                        draftAlarms = baseline.alarms
+                        draftPriority = baseline.priority
+                        draftCompleted = baseline.completed
+                        draftTags = baseline.tags
+                    },
+                ) {
+                    Text(
+                        text = "Undo",
+                        color = if (undoEnabled) Color(0xFFEDEDED) else Color(0xFF555555),
+                    )
+                }
                 // Only present in the edit flow. Red tint to read as destructive — the
                 // caller is responsible for showing the confirmation dialog and
                 // dismissing the sheet.
@@ -443,9 +532,13 @@ private fun QDetailsBottomSheetContent(
                         )
                     }
                 }
-                // Save is locked while the LLM is still streaming — committing mid-
-                // stream would persist a half-filled Q and race with later updates.
-                val saveEnabled = !streaming && (draftText.isNotBlank() || draftVoiceNotePath != null)
+                // Save is locked while the LLM is still streaming (would persist a
+                // half-filled Q), when there's nothing different from the initial
+                // draft (no work to commit), and when the draft has no content the
+                // user could find later (blank title and no voice note).
+                val saveEnabled = !streaming &&
+                        unsaved &&
+                        (draftText.isNotBlank() || draftVoiceNotePath != null)
                 TextButton(
                     onClick = {
                         onSave(
