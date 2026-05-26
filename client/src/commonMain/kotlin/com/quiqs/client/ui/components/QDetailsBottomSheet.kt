@@ -498,11 +498,13 @@ private fun QDetailsBottomSheetContent(
                     )
                 }
                 Spacer(modifier = Modifier.weight(1f))
-                // Undo — reverts every field back to the baseline (the original Q in
-                // edit mode, an empty draft in create mode, or the LLM's final
-                // snapshot in the voice-stream mode). Disabled when there's nothing
-                // to revert and while the LLM is still streaming.
+                // Reverts every field back to the baseline (the original Q in edit
+                // mode, an empty draft in the `+` flow, or the LLM's final snapshot
+                // in the voice-stream flow). Disabled when there's nothing to revert
+                // and while the LLM is still streaming. Labeled "Undo" when editing
+                // an existing Q (onDelete present), "Clear" when creating one.
                 val undoEnabled = canUndo && !streaming
+                val undoLabel = if (onDelete != null) "Undo" else "Clear"
                 TextButton(
                     enabled = undoEnabled,
                     onClick = {
@@ -515,7 +517,7 @@ private fun QDetailsBottomSheetContent(
                     },
                 ) {
                     Text(
-                        text = "Undo",
+                        text = undoLabel,
                         color = if (undoEnabled) Color(0xFFEDEDED) else Color(0xFF555555),
                     )
                 }
