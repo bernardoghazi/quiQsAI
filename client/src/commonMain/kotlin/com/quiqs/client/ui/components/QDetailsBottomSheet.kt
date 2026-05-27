@@ -118,6 +118,8 @@ import kotlinx.datetime.toLocalDateTime
 
 const val SHEET_SECTION_HORIZONTAL_PADDING = 22
 
+private val SheetScrimColor = Color(0xE60F0F0F)
+
 /**
  * Editable fields the sheet collects. Bundled into one struct so adding new fields
  * (right now alarms / priority / tags pass through unchanged; future entry points can
@@ -193,7 +195,7 @@ fun QDetailsBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         containerColor = Color.Transparent,
-        scrimColor = Color(0xE60F0F0F),
+        scrimColor = SheetScrimColor,
         dragHandle = null,
         shape = RectangleShape,
         // Apply only the bottom navigation-bar inset so the sheet sits above the system
@@ -482,6 +484,7 @@ private fun QDetailsBottomSheetContent(
                         offset = DpOffset(0.dp, (-8).dp),
                         shape = RoundedCornerShape(12.dp),
                         containerColor = Color(0xFF000000),
+                        modifier = Modifier.width(140.dp)
                     ) {
                         PriorityMenuContent(
                             selected = draftPriority,
@@ -576,7 +579,7 @@ private fun QDetailsBottomSheetContent(
             Box(
                 modifier = Modifier
                     .matchParentSize()
-                    .background(Color(0xE60F0F0F))
+                    .background(SheetScrimColor)
                     .pointerInput(Unit) {
                         detectTapGestures { priorityMenuOpen = false }
                     },
@@ -904,7 +907,7 @@ private fun PriorityMenuContent(
     selected: Priority,
     onSelect: (Priority) -> Unit,
 ) {
-    Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         PriorityChip(
             label = Priority.LOW.wire,
             tone = QBadgeTone.Low,
@@ -941,15 +944,13 @@ private fun PriorityChip(
     val (bg, fg) = pillColors(tone)
     Row(
         modifier = Modifier
+            .fillMaxWidth()
             .clip(RoundedCornerShape(20))
             .background(bg)
-            .then(
-                if (selected) Modifier.border(1.dp, fg, RoundedCornerShape(20))
-                else Modifier
-            )
             .clickable { onClick() }
             .padding(horizontal = 14.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center
     ) {
         QText(text = label, role = QTextRole.Badge, color = fg)
     }
