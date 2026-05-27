@@ -576,7 +576,7 @@ private fun QDetailsBottomSheetContent(
             Box(
                 modifier = Modifier
                     .matchParentSize()
-                    .background(Color(0xCC000000))
+                    .background(Color(0xE60F0F0F))
                     .pointerInput(Unit) {
                         detectTapGestures { priorityMenuOpen = false }
                     },
@@ -904,10 +904,7 @@ private fun PriorityMenuContent(
     selected: Priority,
     onSelect: (Priority) -> Unit,
 ) {
-    Row(
-        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
+    Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         PriorityChip(
             label = Priority.LOW.wire,
             tone = QBadgeTone.Low,
