@@ -59,7 +59,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
-import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextStyle
@@ -115,10 +114,6 @@ import kotlinx.datetime.plus
 import kotlinx.datetime.toInstant
 import kotlinx.datetime.toLocalDateTime
 
-
-const val SHEET_SECTION_HORIZONTAL_PADDING = 22
-
-private val SheetScrimColor = Color(0xE60F0F0F)
 
 /**
  * Editable fields the sheet collects. Bundled into one struct so adding new fields
@@ -628,20 +623,6 @@ private fun TitleEditor(
             innerTextField()
         },
     )
-}
-
-@Composable
-private fun SheetSection(
-    shape: Shape,
-    content: @Composable () -> Unit,
-) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = shape,
-        color = Color(0xFF000000),
-    ) {
-        content()
-    }
 }
 
 /**

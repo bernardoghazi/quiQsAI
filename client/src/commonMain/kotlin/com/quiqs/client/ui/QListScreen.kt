@@ -45,6 +45,7 @@ import com.quiqs.client.ui.components.QBottomBar
 import com.quiqs.client.ui.components.QCard
 import com.quiqs.client.ui.components.QDetailsBottomSheet
 import com.quiqs.client.ui.components.QDraft
+import com.quiqs.client.ui.components.QFilterSortBottomSheet
 import com.quiqs.client.ui.components.QVoicePromptDialog
 import com.quiqs.shared.Q
 import com.quiqs.shared.QFilterSort
@@ -111,6 +112,9 @@ fun QListScreen(
     // seeded from that Q) or the bottom bar's `+` (empty draft); cleared on dismiss
     // (scrim tap or back press), discarding anything the user typed/recorded.
     var sheetRequest by remember { mutableStateOf<SheetRequest?>(null) }
+
+    // Drives the filter+sort bottom sheet shown from the bottom bar's filter button.
+    var filterSortSheetOpen by remember { mutableStateOf(false) }
 
     // Open the sheet as soon as the VM detects "type":"create" in the streaming
     // LLM output. The sheet then follows `streamingDraft` for live-fill until
@@ -247,7 +251,7 @@ fun QListScreen(
         },
         bottomBar = {
             QBottomBar(
-                onFilterSort = {},
+                onFilterSort = { filterSortSheetOpen = true },
                 onAdd = {
                     sheetRequest = SheetRequest(
                         initial = QDraft(),
@@ -365,6 +369,23 @@ fun QListScreen(
             onDelete = request.onDelete,
             streamingDraft = if (request.fromVoiceStream) streamingDraft else null,
             streaming = request.fromVoiceStream && streamingActive,
+        )
+    }
+
+    if (filterSortSheetOpen) {
+        // Tags universe is derived from the unfiltered Q list so the chip cloud doesn't
+        // collapse to just what's already visible under the current filter.
+        val availableTags = remember(all) {
+            all.flatMap { it.tags }.distinct().sorted()
+        }
+        QFilterSortBottomSheet(
+            current = filterSort,
+            availableTags = availableTags,
+            onApply = { spec ->
+                onFilterSortApplied(spec)
+                filterSortSheetOpen = false
+            },
+            onDismiss = { filterSortSheetOpen = false },
         )
     }
 
