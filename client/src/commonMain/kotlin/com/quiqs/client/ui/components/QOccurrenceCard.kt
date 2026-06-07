@@ -25,12 +25,12 @@ import com.quiqs.shared.Priority
 import com.quiqs.shared.Q
 
 /**
- * Compact two-row card representing a Q in a timeline view (Day or Week).
- *
- * Top row: round checkbox → muted [timeLabel] → title (single line, ellipsized).
- * Bottom row (omitted when there's nothing to show): priority badge + tag chips,
- * indented to the same x as the title so badges sit beneath the title text rather
- * than the leading checkbox/time pair.
+ * Compact card representing a Q in a timeline view (Day or Week). Lays out as a
+ * vertical stack:
+ *  - Top row: round checkbox + muted [timeLabel].
+ *  - Title row: single-line, ellipsized — spans the card's full content width.
+ *  - Badge row (when present): priority badge + tag chips in a [FlowRow] so they
+ *    wrap to multiple lines for tag-heavy Qs.
  *
  * Caller pre-formats [timeLabel] so the same card can show `":30"` inside a Day
  * view's hour-labelled gutter or `"9:30 AM"` in a Week-section list where there's
@@ -67,25 +67,22 @@ fun QOccurrenceCard(
         color = cardContainer,
         border = BorderStroke(1.dp, cardOutline),
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 10.dp, vertical = 8.dp),
-            // Top-aligned so the checkbox + time pair stay anchored at the top edge of
-            // the card regardless of how tall the right-hand Column becomes.
-            verticalAlignment = Alignment.Top,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            QCheckbox(
-                modifier = Modifier.offset(y=3.dp),
-                checked = q.completed,
-                onCheckedChange = onToggleCompleted,
-            )
-            Text(text = timeLabel, color = timeColor, fontSize = 12.sp)
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
+            Row(
+                verticalAlignment = Alignment.Top,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                QCheckbox(
+                    modifier = Modifier.offset(y = 3.dp),
+                    checked = q.completed,
+                    onCheckedChange = onToggleCompleted,
+                )
+                Text(text = timeLabel, color = timeColor, fontSize = 12.sp)
                 val titleText = if (q.text.isBlank() && q.voiceNotePath != null) "Voice note" else q.text
                 Text(
                     text = titleText,
@@ -94,14 +91,14 @@ fun QOccurrenceCard(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                if (hasBadges) {
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
-                    ) {
-                        priorityBadge?.let { (label, tone) -> QBadge(label = label, tone = tone) }
-                        q.tags.forEach { tag -> QBadge(label = tag, tone = QBadgeTone.Neutral) }
-                    }
+            }
+            if (hasBadges) {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    priorityBadge?.let { (label, tone) -> QBadge(label = label, tone = tone) }
+                    q.tags.forEach { tag -> QBadge(label = tag, tone = QBadgeTone.Neutral) }
                 }
             }
         }
