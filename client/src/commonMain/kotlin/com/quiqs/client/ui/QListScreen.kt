@@ -41,6 +41,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.quiqs.client.AgentProvider
 import com.quiqs.client.audio.PlayerProvider
 import com.quiqs.client.audio.RecorderProvider
+import com.quiqs.shared.Alarm
 import com.quiqs.client.ui.components.QBottomBar
 import com.quiqs.client.ui.components.QCard
 import com.quiqs.client.ui.components.QDayView
@@ -380,6 +381,24 @@ fun QListScreen(
                 onTapQ = { q -> sheetRequest = makeEditRequest(q) },
                 onToggleCompleted = { q, checked ->
                     scope.launch { repository.update(q.id, completed = checked) }
+                },
+                onCreateAtHour = { at ->
+                    sheetRequest = SheetRequest(
+                        initial = QDraft(alarms = listOf(Alarm.OneOffTime(at = at))),
+                        onSave = { draft ->
+                            scope.launch {
+                                repository.create(
+                                    text = draft.text,
+                                    tags = draft.tags,
+                                    alarms = draft.alarms,
+                                    priority = draft.priority,
+                                    completed = draft.completed,
+                                    voiceNotePath = draft.voiceNotePath,
+                                )
+                                sheetRequest = null
+                            }
+                        },
+                    )
                 },
                 modifier = Modifier.padding(top = padding.calculateTopPadding()),
                 contentPadding = PaddingValues(
