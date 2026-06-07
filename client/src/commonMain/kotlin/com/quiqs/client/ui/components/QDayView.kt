@@ -1,6 +1,5 @@
 package com.quiqs.client.ui.components
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -24,7 +23,6 @@ import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
@@ -325,9 +323,10 @@ private fun HourRow(
                         verticalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
                         for (occurrence in occurrences) {
-                            DayQRow(
-                                occurrence = occurrence,
-                                tz = tz,
+                            val local = occurrence.at.toLocalDateTime(tz)
+                            QOccurrenceCard(
+                                q = occurrence.q,
+                                timeLabel = ":${local.minute.toString().padStart(2, '0')}",
                                 onTap = { onTapQ(occurrence.q) },
                                 onToggleCompleted = { c -> onToggleCompleted(occurrence.q, c) },
                             )
@@ -359,80 +358,6 @@ private fun HourRow(
                     .clip(CircleShape)
                     .background(nowLineColor),
             )
-        }
-    }
-}
-
-/**
- * Compact Q row inside an hour slot. Left to right: round checkbox, minute mark
- * (`:30` or `:00`), title (truncated to a single line), trailing flow of priority
- * + tag badges. Tap opens the details sheet via [onTap].
- */
-@Composable
-private fun DayQRow(
-    occurrence: QOccurrence,
-    tz: TimeZone,
-    onTap: () -> Unit,
-    onToggleCompleted: (Boolean) -> Unit,
-) {
-    val isDark = LocalThemeIsDark.current
-    val cardContainer = if (isDark) Color(0xFF000000) else Color(0xFFFFFFFF)
-    val cardOutline = if (isDark) Color(0xFF262626) else Color(0xFFC4C4C4)
-    val minuteColor = if (isDark) Color(0xFF8A8A8A) else Color(0xFF6E6E6E)
-    val titleColor = if (isDark) Color(0xFFEDEDED) else Color(0xFF1A1A1A)
-    val local = occurrence.at.toLocalDateTime(tz)
-    val q = occurrence.q
-
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onTap() },
-        shape = RoundedCornerShape(10.dp),
-        color = cardContainer,
-        border = BorderStroke(1.dp, cardOutline),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 10.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            QCheckbox(
-                checked = q.completed,
-                onCheckedChange = onToggleCompleted,
-            )
-            Text(
-                text = ":${local.minute.toString().padStart(2, '0')}",
-                color = minuteColor,
-                fontSize = 12.sp,
-            )
-            val titleText = if (q.text.isBlank() && q.voiceNotePath != null) "Voice note" else q.text
-            Text(
-                text = titleText,
-                color = titleColor,
-                fontSize = 14.sp,
-                maxLines = 1,
-                modifier = Modifier.weight(1f),
-            )
-            val priorityBadge = when (q.priority) {
-                Priority.HIGH -> q.priority.wire to QBadgeTone.High
-                Priority.LOW -> q.priority.wire to QBadgeTone.Low
-                Priority.MEDIUM -> null
-            }
-            priorityBadge?.let { (label, tone) -> QBadge(label = label, tone = tone) }
-            // Show only the first tag to keep the row compact; the details sheet
-            // surfaces the full list. A "+N" hint signals overflow.
-            q.tags.firstOrNull()?.let { tag ->
-                QBadge(label = tag, tone = QBadgeTone.Neutral)
-                if (q.tags.size > 1) {
-                    Text(
-                        text = "+${q.tags.size - 1}",
-                        color = minuteColor,
-                        fontSize = 11.sp,
-                    )
-                }
-            }
         }
     }
 }

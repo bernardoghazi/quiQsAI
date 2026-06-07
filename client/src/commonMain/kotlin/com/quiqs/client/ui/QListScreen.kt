@@ -49,6 +49,7 @@ import com.quiqs.client.ui.components.QDetailsBottomSheet
 import com.quiqs.client.ui.components.QDraft
 import com.quiqs.client.ui.components.QFilterSortBottomSheet
 import com.quiqs.client.ui.components.QVoicePromptDialog
+import com.quiqs.client.ui.components.QWeekView
 import com.quiqs.client.ui.components.ViewMode
 import com.quiqs.shared.Q
 import com.quiqs.shared.QFilterSort
@@ -56,7 +57,10 @@ import com.quiqs.shared.QRepository
 import com.quiqs.shared.applyTo
 import kotlin.time.Clock
 import kotlinx.coroutines.launch
+import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.TimeZone
+import kotlinx.datetime.isoDayNumber
+import kotlinx.datetime.minus
 import kotlinx.datetime.toLocalDateTime
 import org.jetbrains.compose.resources.painterResource
 import quiqsai.client.generated.resources.Res
@@ -132,6 +136,12 @@ fun QListScreen(
     val systemTz = remember { TimeZone.currentSystemDefault() }
     var dayDate by remember {
         mutableStateOf(Clock.System.now().toLocalDateTime(systemTz).date)
+    }
+    // Monday of the week the Week view is currently scoped to. Same persistence
+    // rationale as [dayDate].
+    var weekStart by remember {
+        val today = Clock.System.now().toLocalDateTime(systemTz).date
+        mutableStateOf(today.minus(today.dayOfWeek.isoDayNumber - 1, DateTimeUnit.DAY))
     }
 
     // Open the sheet as soon as the VM detects "type":"create" in the streaming
@@ -408,7 +418,27 @@ fun QListScreen(
                 ),
             )
 
-            ViewMode.Week, ViewMode.Month -> Box(
+            ViewMode.Week -> QWeekView(
+                qs = qs,
+                weekStart = weekStart,
+                onSelectWeek = { weekStart = it },
+                onTapQ = { q -> sheetRequest = makeEditRequest(q) },
+                onToggleCompleted = { q, checked ->
+                    scope.launch { repository.update(q.id, completed = checked) }
+                },
+                onOpenDay = { date ->
+                    dayDate = date
+                    viewMode = ViewMode.Day
+                },
+                modifier = Modifier.padding(top = padding.calculateTopPadding()),
+                contentPadding = PaddingValues(
+                    start = 12.dp,
+                    end = 12.dp,
+                    bottom = padding.calculateBottomPadding() + 84.dp,
+                ),
+            )
+
+            ViewMode.Month -> Box(
                 modifier = Modifier.fillMaxSize().padding(padding),
                 contentAlignment = Alignment.Center,
             ) {
