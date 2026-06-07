@@ -4,28 +4,28 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.only
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
@@ -67,9 +67,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.max
 import androidx.compose.ui.unit.sp
 import com.quiqs.client.LocalThemeIsDark
 import com.quiqs.client.QuiqsColorScheme
@@ -85,6 +83,17 @@ import com.quiqs.client.audio.RecorderStatus
 import com.quiqs.shared.Alarm
 import com.quiqs.shared.Priority
 import kotlinx.coroutines.launch
+import kotlinx.datetime.DateTimeUnit
+import kotlinx.datetime.DayOfWeek
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.Month
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.atTime
+import kotlinx.datetime.daysUntil
+import kotlinx.datetime.isoDayNumber
+import kotlinx.datetime.plus
+import kotlinx.datetime.toInstant
+import kotlinx.datetime.toLocalDateTime
 import org.jetbrains.compose.resources.DrawableResource
 import org.jetbrains.compose.resources.painterResource
 import quiqsai.client.generated.resources.Res
@@ -100,19 +109,6 @@ import quiqsai.client.generated.resources.x
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Instant
-import kotlinx.datetime.DateTimeUnit
-import kotlinx.datetime.DayOfWeek
-import kotlinx.datetime.LocalDate
-import kotlinx.datetime.LocalDateTime
-import kotlinx.datetime.Month
-import kotlinx.datetime.TimeZone
-import kotlinx.datetime.atTime
-import kotlinx.datetime.daysUntil
-import kotlinx.datetime.isoDayNumber
-import kotlinx.datetime.number
-import kotlinx.datetime.plus
-import kotlinx.datetime.toInstant
-import kotlinx.datetime.toLocalDateTime
 
 
 /**
@@ -306,16 +302,7 @@ private fun QDetailsBottomSheetContent(
     // overlay. Driven by the clock action on the main draft and by tapping an
     // existing alarm pill (which pre-fills the builder).
     var sheetScreen by remember { mutableStateOf<SheetScreen>(SheetScreen.MainDraft) }
-    // Single picker anchored to the section-4 exclamation icon. The section-3
-    // priority pill opens the same menu (so the popup appears above the icon),
-    // which keeps the entry points consistent and avoids a second anchor.
-    var priorityMenuOpen by remember { mutableStateOf(false) }
-    val onSelectPriority: (Priority) -> Unit = { picked ->
-        draftPriority = picked
-        priorityMenuOpen = false
-    }
 
-    Box(modifier = Modifier.fillMaxWidth()) {
     AnimatedContent(targetState = sheetScreen, label = "sheet-screen") { current ->
         when (current) {
             is SheetScreen.AlarmBuilder -> AlarmBuilder(
@@ -323,6 +310,14 @@ private fun QDetailsBottomSheetContent(
                 onCancel = { sheetScreen = SheetScreen.MainDraft },
                 onAlarmChosen = { alarm ->
                     draftAlarms = listOf(alarm)
+                    sheetScreen = SheetScreen.MainDraft
+                },
+            )
+            is SheetScreen.PriorityBuilder -> PriorityBuilder(
+                initial = current.initial,
+                onCancel = { sheetScreen = SheetScreen.MainDraft },
+                onConfirm = { picked ->
+                    draftPriority = picked
                     sheetScreen = SheetScreen.MainDraft
                 },
             )
@@ -409,7 +404,7 @@ private fun QDetailsBottomSheetContent(
                                 DismissPill(
                                     label = draftPriority.wire,
                                     tone = tone,
-                                    onClick = { priorityMenuOpen = true },
+                                    onClick = { sheetScreen = SheetScreen.PriorityBuilder(initial = draftPriority) },
                                     onDismiss = { draftPriority = Priority.MEDIUM },
                                 )
                             }
@@ -461,31 +456,15 @@ private fun QDetailsBottomSheetContent(
                         modifier = Modifier.size(20.dp),
                     )
                 }
-                Box {
-                    IconButton(onClick = { priorityMenuOpen = true }) {
-                        Icon(
-                            painter = painterResource(Res.drawable.exclamation),
-                            contentDescription = "Set priority",
-                            tint = Color(0xFFEDEDED),
-                            modifier = Modifier.size(17.dp),
-                        )
-                    }
-                    // Anchored to the icon button. The menu auto-flips above when there's
-                    // no room below — which is the typical case here, since section 4 sits
-                    // at the bottom of the sheet.
-                    DropdownMenu(
-                        expanded = priorityMenuOpen,
-                        onDismissRequest = { priorityMenuOpen = false },
-                        offset = DpOffset(0.dp, (-8).dp),
-                        shape = RoundedCornerShape(12.dp),
-                        containerColor = Color(0xFF000000),
-                        modifier = Modifier.width(140.dp)
-                    ) {
-                        PriorityMenuContent(
-                            selected = draftPriority,
-                            onSelect = onSelectPriority,
-                        )
-                    }
+                IconButton(onClick = {
+                    sheetScreen = SheetScreen.PriorityBuilder(initial = draftPriority)
+                }) {
+                    Icon(
+                        painter = painterResource(Res.drawable.exclamation),
+                        contentDescription = "Set priority",
+                        tint = Color(0xFFEDEDED),
+                        modifier = Modifier.size(17.dp),
+                    )
                 }
                 IconButton(onClick = {}) {
                     Icon(
@@ -563,22 +542,6 @@ private fun QDetailsBottomSheetContent(
             }
         }
             }
-        }
-    }
-        // Scrim drawn over the sheet's content while the priority picker is open so
-        // the popup (rendered in its own popup window above this scrim) reads as the
-        // foreground layer. The popup's `onDismissRequest` already handles outside-tap
-        // dismissal; the scrim's `pointerInput` is a belt-and-braces consumer so taps
-        // can't slip through to the title editor or save button underneath.
-        if (priorityMenuOpen) {
-            Box(
-                modifier = Modifier
-                    .matchParentSize()
-                    .background(SheetScrimColor)
-                    .pointerInput(Unit) {
-                        detectTapGestures { priorityMenuOpen = false }
-                    },
-            )
         }
     }
 }
@@ -879,39 +842,7 @@ private fun DismissPill(
 }
 
 /**
- * The three-chip selector shared by both priority dropdowns — the section-4
- * exclamation icon and the section-3 priority pill. Factored so the two
- * [DropdownMenu] anchors stay visually identical.
- */
-@Composable
-private fun PriorityMenuContent(
-    selected: Priority,
-    onSelect: (Priority) -> Unit,
-) {
-    Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        PriorityChip(
-            label = Priority.LOW.wire,
-            tone = QBadgeTone.Low,
-            selected = selected == Priority.LOW,
-            onClick = { onSelect(Priority.LOW) },
-        )
-        PriorityChip(
-            label = Priority.MEDIUM.wire,
-            tone = QBadgeTone.Neutral,
-            selected = selected == Priority.MEDIUM,
-            onClick = { onSelect(Priority.MEDIUM) },
-        )
-        PriorityChip(
-            label = Priority.HIGH.wire,
-            tone = QBadgeTone.High,
-            selected = selected == Priority.HIGH,
-            onClick = { onSelect(Priority.HIGH) },
-        )
-    }
-}
-
-/**
- * Tappable selector chip used inside the priority popup. Same palette as the
+ * Tappable selector chip used inside [PriorityBuilder]. Same palette as the
  * section-3 [DismissPill] (so the chip previews what its selection will look like)
  * but without the trailing `×` and with a 1 dp border on the currently-selected one.
  */
@@ -959,14 +890,16 @@ private fun pillColors(tone: QBadgeTone): PillColors = when (tone) {
 
 /**
  * Internal-navigation state for the bottom sheet. The sheet stays a single
- * [ModalBottomSheet]; tapping the clock action or an existing alarm pill swaps
- * the body to the alarm builder via [AnimatedContent]. Each [AlarmBuilder] entry
- * carries the alarm being edited (or `null` for a fresh add), so the future
- * forms can pre-fill themselves.
+ * [ModalBottomSheet]; tapping the clock action, an existing alarm pill, the
+ * exclamation icon, or the priority pill swaps the body to the matching builder
+ * via [AnimatedContent]. [AlarmBuilder] carries the alarm being edited (or `null`
+ * for a fresh add); [PriorityBuilder] seeds the picker with the current draft
+ * priority so the user can confirm or change it.
  */
 private sealed class SheetScreen {
     data object MainDraft : SheetScreen()
     data class AlarmBuilder(val editing: Alarm?) : SheetScreen()
+    data class PriorityBuilder(val initial: Priority) : SheetScreen()
 }
 
 private enum class AlarmBuilderStep {
@@ -1017,6 +950,69 @@ private fun AlarmBuilder(
                         onConfirm = onAlarmChosen,
                     )
                 }
+            }
+        }
+    }
+}
+
+/**
+ * Replacement body for [SheetScreen.PriorityBuilder]. Two sections — header and
+ * chip list. Tapping a chip commits immediately via [onConfirm], which returns
+ * the sheet to the main draft.
+ */
+@Composable
+private fun PriorityBuilder(
+    initial: Priority,
+    onCancel: () -> Unit,
+    onConfirm: (Priority) -> Unit,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        SheetSection(
+            shape = RoundedCornerShape(
+                topStart = 14.dp,
+                topEnd = 14.dp,
+                bottomStart = 4.dp,
+                bottomEnd = 4.dp,
+            ),
+        ) {
+            BuilderHeader(title = "Set priority", onBack = onCancel)
+        }
+        SheetSection(
+            shape = RoundedCornerShape(
+                topStart = 4.dp,
+                topEnd = 4.dp,
+                bottomStart = 14.dp,
+                bottomEnd = 14.dp,
+            ),
+        ) {
+            Column(
+                modifier = Modifier.padding(
+                    horizontal = SHEET_SECTION_HORIZONTAL_PADDING.dp,
+                    vertical = 14.dp,
+                ),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                PriorityChip(
+                    label = Priority.LOW.wire,
+                    tone = QBadgeTone.Low,
+                    selected = initial == Priority.LOW,
+                    onClick = { onConfirm(Priority.LOW) },
+                )
+                PriorityChip(
+                    label = Priority.MEDIUM.wire,
+                    tone = QBadgeTone.Neutral,
+                    selected = initial == Priority.MEDIUM,
+                    onClick = { onConfirm(Priority.MEDIUM) },
+                )
+                PriorityChip(
+                    label = Priority.HIGH.wire,
+                    tone = QBadgeTone.High,
+                    selected = initial == Priority.HIGH,
+                    onClick = { onConfirm(Priority.HIGH) },
+                )
             }
         }
     }
