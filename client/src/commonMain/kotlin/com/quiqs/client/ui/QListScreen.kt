@@ -356,6 +356,12 @@ fun QListScreen(
 
     QVoicePromptDialog(state = voiceState, onDismiss = vm::dismissDialog)
 
+    // Tags universe is derived from the unfiltered Q list so chip clouds (filter-sort,
+    // details tag builder) don't collapse to just what's currently visible.
+    val availableTags = remember(all) {
+        all.flatMap { it.tags }.distinct().sorted()
+    }
+
     sheetRequest?.let { request ->
         QDetailsBottomSheet(
             initial = request.initial,
@@ -367,17 +373,13 @@ fun QListScreen(
                 if (request.fromVoiceStream) vm.clearStreamingDraft()
             },
             onDelete = request.onDelete,
+            availableTags = availableTags,
             streamingDraft = if (request.fromVoiceStream) streamingDraft else null,
             streaming = request.fromVoiceStream && streamingActive,
         )
     }
 
     if (filterSortSheetOpen) {
-        // Tags universe is derived from the unfiltered Q list so the chip cloud doesn't
-        // collapse to just what's already visible under the current filter.
-        val availableTags = remember(all) {
-            all.flatMap { it.tags }.distinct().sorted()
-        }
         QFilterSortBottomSheet(
             current = filterSort,
             availableTags = availableTags,

@@ -149,6 +149,11 @@ fun QDetailsBottomSheet(
     // non-null in the edit flow. The caller is expected to dismiss the sheet and
     // route through its own confirmation flow.
     onDelete: (() -> Unit)? = null,
+    // Tag universe rendered in the TagBuilder's chip cloud — typically the union of
+    // every tag attached to any Q in the DB. Caller-provided so this composable
+    // stays agnostic of how tags are sourced. Tags already on the draft but missing
+    // from this list are still rendered (selected) inside the builder.
+    availableTags: List<String> = emptyList(),
     // Live-streamed draft from the voice flow. When non-null, the sheet's editable
     // fields are overridden by this value each time it changes (LLM produces a new
     // field). When it transitions to null, local state retains the last applied
@@ -200,6 +205,7 @@ fun QDetailsBottomSheet(
             playerProvider = playerProvider,
             onSave = onSave,
             onDelete = onDelete,
+            availableTags = availableTags,
             streamingDraft = streamingDraft,
             streaming = streaming,
             onDirtyChange = { dirty = it },
@@ -242,6 +248,7 @@ private fun QDetailsBottomSheetContent(
     playerProvider: PlayerProvider = NoPlayer,
     onSave: (QDraft) -> Unit = {},
     onDelete: (() -> Unit)? = null,
+    availableTags: List<String> = emptyList(),
     streamingDraft: QDraft? = null,
     streaming: Boolean = false,
     onDirtyChange: (Boolean) -> Unit = {},
@@ -320,6 +327,12 @@ private fun QDetailsBottomSheetContent(
                     draftPriority = picked
                     sheetScreen = SheetScreen.MainDraft
                 },
+            )
+            is SheetScreen.TagBuilder -> TagBuilder(
+                initial = current.initial,
+                available = availableTags,
+                onBack = { sheetScreen = SheetScreen.MainDraft },
+                onChange = { tags -> draftTags = tags },
             )
             SheetScreen.MainDraft -> Column(
                 modifier = Modifier.fillMaxWidth(),
@@ -409,7 +422,12 @@ private fun QDetailsBottomSheetContent(
                                 )
                             }
                             draftTags.forEach { tag ->
-                                DismissPill(label = tag, tone = QBadgeTone.Neutral, onDismiss = {})
+                                DismissPill(
+                                    label = tag,
+                                    tone = QBadgeTone.Neutral,
+                                    onClick = { sheetScreen = SheetScreen.TagBuilder(initial = draftTags) },
+                                    onDismiss = { draftTags = draftTags - tag },
+                                )
                             }
                         }
                     }
@@ -466,10 +484,12 @@ private fun QDetailsBottomSheetContent(
                         modifier = Modifier.size(17.dp),
                     )
                 }
-                IconButton(onClick = {}) {
+                IconButton(onClick = {
+                    sheetScreen = SheetScreen.TagBuilder(initial = draftTags)
+                }) {
                     Icon(
                         painter = painterResource(Res.drawable.label),
-                        contentDescription = null,
+                        contentDescription = "Edit tags",
                         tint = Color(0xFFEDEDED),
                         modifier = Modifier.size(22.dp),
                     )
@@ -891,15 +911,17 @@ private fun pillColors(tone: QBadgeTone): PillColors = when (tone) {
 /**
  * Internal-navigation state for the bottom sheet. The sheet stays a single
  * [ModalBottomSheet]; tapping the clock action, an existing alarm pill, the
- * exclamation icon, or the priority pill swaps the body to the matching builder
- * via [AnimatedContent]. [AlarmBuilder] carries the alarm being edited (or `null`
- * for a fresh add); [PriorityBuilder] seeds the picker with the current draft
- * priority so the user can confirm or change it.
+ * exclamation icon, the priority pill, the label icon, or a tag pill swaps the
+ * body to the matching builder via [AnimatedContent]. [AlarmBuilder] carries the
+ * alarm being edited (or `null` for a fresh add); [PriorityBuilder] seeds the
+ * picker with the current draft priority; [TagBuilder] seeds the chip selection
+ * with the current draft tags.
  */
 private sealed class SheetScreen {
     data object MainDraft : SheetScreen()
     data class AlarmBuilder(val editing: Alarm?) : SheetScreen()
     data class PriorityBuilder(val initial: Priority) : SheetScreen()
+    data class TagBuilder(val initial: List<String>) : SheetScreen()
 }
 
 private enum class AlarmBuilderStep {
@@ -1016,6 +1038,177 @@ private fun PriorityBuilder(
             }
         }
     }
+}
+
+/**
+ * Replacement body for [SheetScreen.TagBuilder]. Two sections — header and a
+ * search-plus-chip-cloud body. The input field doubles as a filter (substring,
+ * case-insensitive) over [available] ∪ current selection, and as a create
+ * affordance: when the trimmed query has no case-insensitive match an
+ * "Add 'xyz'" chip appears as the first row. Every toggle / add propagates via
+ * [onChange] immediately so the user can dismiss via X (or scrim) without losing
+ * their picks. [onBack] returns to the main draft.
+ */
+@Composable
+private fun TagBuilder(
+    initial: List<String>,
+    available: List<String>,
+    onBack: () -> Unit,
+    onChange: (List<String>) -> Unit,
+) {
+    var selected by remember(initial) { mutableStateOf(initial) }
+    var query by remember { mutableStateOf("") }
+
+    val trimmed = query.trim()
+    // Union of the caller-provided universe and the current selection so a tag the
+    // user just added (or one already on the draft but not present in `available`)
+    // still renders as a selected chip.
+    val universe = (available + selected).distinct()
+    val matches = if (trimmed.isEmpty()) {
+        universe.sortedBy { it.lowercase() }
+    } else {
+        universe.filter { it.contains(trimmed, ignoreCase = true) }
+            .sortedBy { it.lowercase() }
+    }
+    val canAddNew = trimmed.isNotEmpty() &&
+        universe.none { it.equals(trimmed, ignoreCase = true) }
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        SheetSection(
+            shape = RoundedCornerShape(
+                topStart = 14.dp,
+                topEnd = 14.dp,
+                bottomStart = 4.dp,
+                bottomEnd = 4.dp,
+            ),
+        ) {
+            BuilderHeader(title = "Tags", onBack = onBack)
+        }
+        SheetSection(
+            shape = RoundedCornerShape(
+                topStart = 4.dp,
+                topEnd = 4.dp,
+                bottomStart = 14.dp,
+                bottomEnd = 14.dp,
+            ),
+        ) {
+            Column(
+                modifier = Modifier.padding(
+                    horizontal = SHEET_SECTION_HORIZONTAL_PADDING.dp,
+                    vertical = 18.dp,
+                ),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                TagSearchField(
+                    value = query,
+                    onValueChange = { query = it },
+                )
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    if (canAddNew) {
+                        TagChip(
+                            label = "Add \"$trimmed\"",
+                            selected = false,
+                            onClick = {
+                                val next = selected + trimmed
+                                selected = next
+                                onChange(next)
+                                query = ""
+                            },
+                        )
+                    }
+                    matches.forEach { tag ->
+                        val isSelected = selected.any { it.equals(tag, ignoreCase = true) }
+                        TagChip(
+                            label = tag,
+                            selected = isSelected,
+                            onClick = {
+                                val next = if (isSelected) {
+                                    selected.filterNot { it.equals(tag, ignoreCase = true) }
+                                } else {
+                                    selected + tag
+                                }
+                                selected = next
+                                onChange(next)
+                            },
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Chip rendered inside [TagBuilder]. Unselected reads as a neutral grey pill; selected
+ * adds a 1 dp outline and brightens the text — same treatment as `FilterPill` in the
+ * filter-sort sheet.
+ */
+@Composable
+private fun TagChip(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val bg = Color(0xFF161616)
+    val fg = if (selected) Color(0xFFEDEDED) else Color(0xFF8893A1)
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(20))
+            .background(bg)
+            .then(
+                if (selected) Modifier.border(1.dp, Color(0xFFEDEDED), RoundedCornerShape(20))
+                else Modifier
+            )
+            .clickable { onClick() }
+            .padding(horizontal = 14.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(text = label, color = fg, fontSize = 13.sp)
+    }
+}
+
+/**
+ * Dual-role input for [TagBuilder] — filters the chip cloud as the user types, and
+ * when the typed query doesn't match any existing tag the surrounding builder shows
+ * an "Add 'xyz'" chip that creates and selects it.
+ */
+@Composable
+private fun TagSearchField(
+    value: String,
+    onValueChange: (String) -> Unit,
+) {
+    BasicTextField(
+        value = value,
+        onValueChange = onValueChange,
+        textStyle = TextStyle(
+            color = Color(0xFFEDEDED),
+            fontSize = 14.sp,
+        ),
+        cursorBrush = SolidColor(Color(0xFFEDEDED)),
+        singleLine = true,
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFF161616), RoundedCornerShape(10.dp))
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        decorationBox = { inner ->
+            Box {
+                if (value.isEmpty()) {
+                    Text(
+                        text = "Search or add a tag",
+                        color = Color(0xFF666666),
+                        fontSize = 14.sp,
+                    )
+                }
+                inner()
+            }
+        },
+    )
 }
 
 @Composable
