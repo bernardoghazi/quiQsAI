@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Surface
@@ -76,6 +77,7 @@ fun QOccurrenceCard(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             QCheckbox(
+                modifier = Modifier.offset(y=3.dp),
                 checked = q.completed,
                 onCheckedChange = onToggleCompleted,
             )
