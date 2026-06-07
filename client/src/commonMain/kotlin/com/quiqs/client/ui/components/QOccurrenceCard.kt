@@ -55,7 +55,10 @@ fun QOccurrenceCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 10.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
+            // Top-aligned so the checkbox and time stay anchored at the top edge when
+            // the title wraps to two lines; otherwise center-alignment shifts them down
+            // by half the wrapped height, which reads as drift.
+            verticalAlignment = Alignment.Top,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             QCheckbox(
