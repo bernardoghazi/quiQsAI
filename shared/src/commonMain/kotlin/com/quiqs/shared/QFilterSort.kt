@@ -28,7 +28,7 @@ data class QFilterSort(
     val priorities: List<Priority> = emptyList(),
     val alarm: AlarmFilter = AlarmFilter.ANY,
     val alarmWindow: AlarmWindow = AlarmWindow.ANY,
-    val completed: CompletedFilter = CompletedFilter.ANY,
+    val completed: CompletedFilter = CompletedFilter.ONLY_OPEN,
     val sortBy: SortField = SortField.CREATED_AT,
     val sortDir: SortDir = SortDir.DESC,
 ) {
@@ -93,7 +93,7 @@ data class QFilterSort(
     val isDefault: Boolean
         get() = text.isNullOrBlank() && tags.isEmpty() && priorities.isEmpty() &&
             alarm == AlarmFilter.ANY && alarmWindow == AlarmWindow.ANY &&
-            completed == CompletedFilter.ANY &&
+            completed == CompletedFilter.ONLY_OPEN &&
             sortBy == SortField.CREATED_AT && sortDir == SortDir.DESC
 }
 
