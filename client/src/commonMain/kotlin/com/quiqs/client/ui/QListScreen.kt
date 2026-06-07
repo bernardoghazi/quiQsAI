@@ -43,15 +43,20 @@ import com.quiqs.client.audio.PlayerProvider
 import com.quiqs.client.audio.RecorderProvider
 import com.quiqs.client.ui.components.QBottomBar
 import com.quiqs.client.ui.components.QCard
+import com.quiqs.client.ui.components.QDayView
 import com.quiqs.client.ui.components.QDetailsBottomSheet
 import com.quiqs.client.ui.components.QDraft
 import com.quiqs.client.ui.components.QFilterSortBottomSheet
 import com.quiqs.client.ui.components.QVoicePromptDialog
+import com.quiqs.client.ui.components.ViewMode
 import com.quiqs.shared.Q
 import com.quiqs.shared.QFilterSort
 import com.quiqs.shared.QRepository
 import com.quiqs.shared.applyTo
+import kotlin.time.Clock
 import kotlinx.coroutines.launch
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toLocalDateTime
 import org.jetbrains.compose.resources.painterResource
 import quiqsai.client.generated.resources.Res
 import quiqsai.client.generated.resources.trash
@@ -115,6 +120,18 @@ fun QListScreen(
 
     // Drives the filter+sort bottom sheet shown from the bottom bar's filter button.
     var filterSortSheetOpen by remember { mutableStateOf(false) }
+
+    // Selected timeline view — drives which body composable renders below the bottom
+    // bar. The bar's toggle group binds to this state. Defaults to List.
+    var viewMode by remember { mutableStateOf(ViewMode.List) }
+
+    // Date the Day view is currently scoped to. Seeded to today on first composition;
+    // stepped by the Day header's chevrons. Only consulted when viewMode == Day, but
+    // kept hoisted so switching away and back preserves the user's place.
+    val systemTz = remember { TimeZone.currentSystemDefault() }
+    var dayDate by remember {
+        mutableStateOf(Clock.System.now().toLocalDateTime(systemTz).date)
+    }
 
     // Open the sheet as soon as the VM detects "type":"create" in the streaming
     // LLM output. The sheet then follows `streamingDraft` for live-fill until
@@ -251,6 +268,8 @@ fun QListScreen(
         },
         bottomBar = {
             QBottomBar(
+                selectedView = viewMode,
+                onSelectView = { viewMode = it },
                 onFilterSort = { filterSortSheetOpen = true },
                 onAdd = {
                     sheetRequest = SheetRequest(
@@ -275,18 +294,19 @@ fun QListScreen(
             )
         },
     ) { padding ->
-        if (qs.isEmpty()) {
-            Box(
-                modifier = Modifier.fillMaxSize().padding(padding),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    if (all.isEmpty()) "No Qs yet — hold the mic to add one"
-                    else "No Qs match the current filter",
-                )
-            }
-        } else {
-            LazyColumn(
+        when (viewMode) {
+            ViewMode.List -> if (qs.isEmpty()) {
+                Box(
+                    modifier = Modifier.fillMaxSize().padding(padding),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        if (all.isEmpty()) "No Qs yet — hold the mic to add one"
+                        else "No Qs match the current filter",
+                    )
+                }
+            } else {
+                LazyColumn(
                 // Only consume the top inset so the list can extend behind the bottom
                 // bar; the bar's height is folded into contentPadding instead, which
                 // lets a translucent bar reveal scrolling Qs underneath while still
@@ -350,6 +370,30 @@ fun QListScreen(
                         )
                     }
                 }
+            }
+            }
+
+            ViewMode.Day -> QDayView(
+                qs = qs,
+                date = dayDate,
+                onSelectDate = { dayDate = it },
+                onTapQ = { q -> sheetRequest = makeEditRequest(q) },
+                onToggleCompleted = { q, checked ->
+                    scope.launch { repository.update(q.id, completed = checked) }
+                },
+                modifier = Modifier.padding(top = padding.calculateTopPadding()),
+                contentPadding = PaddingValues(
+                    start = 12.dp,
+                    end = 12.dp,
+                    bottom = padding.calculateBottomPadding() + 84.dp,
+                ),
+            )
+
+            ViewMode.Week, ViewMode.Month -> Box(
+                modifier = Modifier.fillMaxSize().padding(padding),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("${viewMode.name} view — coming soon")
             }
         }
     }

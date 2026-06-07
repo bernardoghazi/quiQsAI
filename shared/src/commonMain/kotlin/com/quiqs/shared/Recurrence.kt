@@ -56,6 +56,50 @@ fun nextRecurringInstant(alarm: Alarm.RecurringTime, after: Instant, tz: TimeZon
     return null
 }
 
+/**
+ * Every occurrence of [alarm] inside the half-open instant range `[rangeStart, rangeEnd)`,
+ * in chronological order. Walks the alarm's occurrence sequence from `dtStart` exactly
+ * once and emits the slice that falls in the window — far cheaper than calling
+ * [nextRecurringInstant] in a loop (which re-walks from `dtStart` per call, O(n²) for
+ * dense rules like `FREQ=MINUTELY`).
+ *
+ * Returns an empty list if the rule can't be parsed, the recurrence has already ended
+ * by `rangeStart`, or no occurrence falls in the window.
+ */
+fun occurrencesOf(
+    alarm: Alarm.RecurringTime,
+    rangeStart: Instant,
+    rangeEnd: Instant,
+    tz: TimeZone,
+): List<Instant> {
+    if (rangeEnd <= rangeStart) return emptyList()
+    val parts = parseRule(alarm.rule) ?: return emptyList()
+    val freq = parts.freq ?: return emptyList()
+    val interval = parts.interval.coerceAtLeast(1)
+    val dtStart = alarm.dtStart
+    val until = alarm.until
+    val maxCount = alarm.count
+    if (rangeEnd <= dtStart) return emptyList()
+    if (until != null && until < rangeStart) return emptyList()
+
+    val occurrences = when (freq) {
+        Freq.MINUTELY -> subDayOccurrences(dtStart, (interval).minutes, parts, tz)
+        Freq.HOURLY -> subDayOccurrences(dtStart, (interval).hours, parts, tz)
+        else -> calendarOccurrences(dtStart, freq, interval, parts, tz)
+    }
+
+    val out = mutableListOf<Instant>()
+    var index = 0
+    for (candidate in occurrences) {
+        index++
+        if (maxCount != null && index > maxCount) break
+        if (until != null && candidate > until) break
+        if (candidate >= rangeEnd) break
+        if (candidate >= rangeStart) out += candidate
+    }
+    return out
+}
+
 private const val SEARCH_HORIZON_DAYS = 366
 
 private enum class Freq { MINUTELY, HOURLY, DAILY, WEEKLY, MONTHLY, YEARLY }
