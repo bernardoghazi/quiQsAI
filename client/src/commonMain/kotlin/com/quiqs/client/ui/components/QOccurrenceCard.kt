@@ -68,7 +68,7 @@ fun QOccurrenceCard(
                 text = titleText,
                 color = titleColor,
                 fontSize = 14.sp,
-                maxLines = 1,
+                maxLines = 2,
                 modifier = Modifier.weight(1f),
             )
             val priorityBadge = when (q.priority) {
