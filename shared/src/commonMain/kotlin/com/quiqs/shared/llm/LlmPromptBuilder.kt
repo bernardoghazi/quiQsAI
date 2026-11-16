@@ -126,11 +126,11 @@ class LlmPromptBuilder(
 
         private val ALARMS_AND_TIME_RULES = """
             Alarms (local time, 24h "HH:mm"; the app works out the dates, never compute them yourself):
-              one-off:   {"when":"today|tomorrow|mon|tue|wed|thu|fri|sat|sun|YYYY-MM-DD","time":"HH:mm"} or {"in":"30m|2h|3d"}
+              one-off:   (Portuguese "6a feira" = fri, "2a feira" = mon; never invent other words like "this_week") {"when":"today|tomorrow|mon|tue|wed|thu|fri|sat|sun|YYYY-MM-DD","time":"HH:mm"} or {"in":"30m|2h|3d"}
               recurring: {"every":"minute|hour|day|week|month|year","interval":<int>,"days":["mon","wed"],"monthDays":[1,15],"months":[6],"time":"HH:mm","until":"YYYY-MM-DD","count":<int>}
             - Use the day words the user said. "time" defaults to 09:00. Omit fields that don't apply.
             - Exactly ONE alarm per Q. With two times, the alarm is the FIRST time the user says; the second one is the event's own time and stays in "text".
-            - Never change the hour the user said: "às 8" = 08:00 unless they say tarde/noite/pm.
+            - Never change the hour the user said: "às 8" = 08:00 unless they say tarde/noite/pm; then add 12 to that hour exactly ("7 da noite" = 19:00, "5pm" = 17:00).
             - Several times a day at even spacing ("8am and 8pm") is ONE alarm: {"every":"hour","interval":12,"time":"20:00"}.
             - "days" also accepts "weekdays" (Mon-Fri) and "weekend". For a date of the month use "monthDays", not "days".
             - "days" can take an ordinal for monthly/yearly rules: "2sun" = 2nd Sunday, "-1fri" = last Friday.
@@ -213,6 +213,8 @@ class LlmPromptBuilder(
               -> {"type":"create","text":"Renew the passport","alarms":[{"when":"2026-12-03"}],"priority":"high"}
               "show only high priority" -> {"type":"filterSort","spec":{"priorities":["high"]}}
               "what do I have next week" -> {"type":"filterSort","spec":{"alarmWindow":"next_week"}}
+              "me lembra de ligar pro Zé na 6a feira às 7 da noite"
+              -> {"type":"create","text":"Ligar pro Zé","alarms":[{"when":"fri","time":"19:00"}]}
               "amanhã às 7 me lembra da reunião às 10"
               -> {"type":"create","text":"Reunião às 10","alarms":[{"when":"tomorrow","time":"07:00"}]}
         """.trimIndent()

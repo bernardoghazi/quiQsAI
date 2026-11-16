@@ -325,7 +325,15 @@ class LlmAlarmDecoder(
     }
 
     /** English weekday names and abbreviations, plus Portuguese (segunda, terça, quarta…). */
-    private fun weekdayOf(word: String): DayOfWeek? = when (word.take(3)) {
+    private fun weekdayOf(word: String): DayOfWeek? {
+        // Brazilian "2a feira" … "6a feira" (also 2ª, 2º, "6a-feira"): Monday … Friday.
+        ORDINAL_FEIRA.matchEntire(word.trim().lowercase())?.let {
+            return DayOfWeek(it.groupValues[1].toInt() - 1)
+        }
+        return weekdayByPrefix(word)
+    }
+
+    private fun weekdayByPrefix(word: String): DayOfWeek? = when (word.take(3)) {
         "mon", "seg" -> DayOfWeek.MONDAY
         "tue", "ter" -> DayOfWeek.TUESDAY
         "wed", "qua" -> DayOfWeek.WEDNESDAY
@@ -361,6 +369,7 @@ class LlmAlarmDecoder(
         val DEFAULT_TIME = 9 to 0
         val TIME = Regex("""(\d{1,2})(?::(\d{2}))?\s*(am|pm)?""")
         val DURATION_PART = Regex("""(\d+)\s*(d|h|m)""")
+        val ORDINAL_FEIRA = Regex("""([2-6])\s*[aªº]?[\s-]*feira""")
         val BYDAY_TOKEN = Regex("""(-?\d+)?([^\d\s-]+)""")
         val COUNT_UNIT = Regex("""(\d+)\s*([^\d\s]+)""")
         val WEEKDAY_NAMES = listOf(

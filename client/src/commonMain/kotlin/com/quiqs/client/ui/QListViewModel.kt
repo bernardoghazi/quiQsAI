@@ -52,7 +52,7 @@ class QListViewModel(
 
     // Which voice path the FAB uses. In-memory only: this is a debug switch for
     // comparing the two pipelines on a device, not a user preference yet.
-    private val _voicePipeline = MutableStateFlow(VoicePipeline.SpeechToText)
+    private val _voicePipeline = MutableStateFlow(VoicePipeline.LlmAudio)
     val voicePipeline: StateFlow<VoicePipeline> = _voicePipeline.asStateFlow()
 
     // Timing summary of the last voice prompt, shown in the voice-input dialog and

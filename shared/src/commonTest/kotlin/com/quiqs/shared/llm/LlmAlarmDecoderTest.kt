@@ -195,6 +195,8 @@ class LlmAlarmDecoderTest {
         assertEquals(at("2026-11-17T08:00:00-03:00"), oneOff("""{"when":"amanhã","time":"08:00"}""").at)
         assertEquals(at("2026-11-16T17:00:00-03:00"), oneOff("""{"when":"hoje","time":"17:00"}""").at)
         assertEquals(at("2026-11-20T07:00:00-03:00"), oneOff("""{"when":"sexta","time":"07:00"}""").at)
+        assertEquals(at("2026-11-20T19:00:00-03:00"), oneOff("""{"when":"6a feira","time":"19:00"}""").at)
+        assertEquals(at("2026-11-20T19:00:00-03:00"), oneOff("""{"when":"6ª-feira","time":"19:00"}""").at)
         assertEquals(at("2026-11-21T07:00:00-03:00"), oneOff("""{"when":"sábado","time":"07:00"}""").at)
     }
 
