@@ -118,20 +118,23 @@ class LlmPromptBuilder(
     companion object {
         private val BASE = """
             You are quiQs's backend. A Q is a note with tags and alarms.
-            Output exactly one JSON command.
+            Output exactly one JSON command, on a single line of compact JSON: no code fence, no indentation.
         """.trimIndent()
 
         private const val AUDIO_INSTRUCTION =
             "The user's prompt is provided as an audio attachment. Transcribe it silently and treat the transcription as the user prompt."
 
         private val ALARMS_AND_TIME_RULES = """
-            Alarms:
-              {"type":"oneOffTime","at":"<iso8601>"}
-              {"type":"recurringTime","rule":"<RRULE body>","dtStart":"<iso8601>","until":"<iso8601|null>","count":<int|null>}
-              {"type":"geofence","latitude":<num>,"longitude":<num>,"radiusMeters":<num>,"activeUntil":"<iso8601|null>"}
-            - Resolve relative times from "Current time". Write iso8601 with the user's offset, never UTC ("5pm" at offset -03:00 -> "17:00:00-03:00").
-            - Recurring: dtStart (first firing) is required; only its time of day matters when the rule has BYDAY/BYMONTHDAY, the app moves the date to the first matching day. rule = RRULE body only, no DTSTART/UNTIL/COUNT. until and count are mutually exclusive; both null = forever.
-              Parts: FREQ (MINUTELY|HOURLY|DAILY|WEEKLY|MONTHLY|YEARLY), INTERVAL, BYDAY (MO..SU; 2SU = 2nd Sunday, -1FR = last Friday), BYMONTH, BYMONTHDAY, BYHOUR, BYMINUTE.
+            Alarms (local time, 24h "HH:mm"; the app works out the dates, never compute them yourself):
+              one-off:   {"when":"today|tomorrow|mon|tue|wed|thu|fri|sat|sun|YYYY-MM-DD","time":"HH:mm"} or {"in":"30m|2h|3d"}
+              recurring: {"every":"minute|hour|day|week|month|year","interval":<int>,"days":["mon","wed"],"monthDays":[1,15],"months":[6],"time":"HH:mm","until":"YYYY-MM-DD","count":<int>}
+            - Use the day words the user said. "time" defaults to 09:00. Omit fields that don't apply.
+            - Exactly ONE alarm per Q. With two times, the alarm is the FIRST time the user says; the second one is the event's own time and stays in "text".
+            - Never change the hour the user said: "às 8" = 08:00 unless they say tarde/noite/pm.
+            - Several times a day at even spacing ("8am and 8pm") is ONE alarm: {"every":"hour","interval":12,"time":"20:00"}.
+            - "days" also accepts "weekdays" (Mon-Fri) and "weekend". For a date of the month use "monthDays", not "days".
+            - "days" can take an ordinal for monthly/yearly rules: "2sun" = 2nd Sunday, "-1fri" = last Friday.
+            - "until" and "count" are mutually exclusive; neither = repeats forever.
         """.trimIndent()
 
         private val PRIORITY_RULES = """
@@ -164,8 +167,8 @@ class LlmPromptBuilder(
 
             Output one command, chosen by the user's intent.
 
-            Create a new Q:
-              {"type":"create","text":"...","tags":[],"alarms":[],"priority":"medium"}
+            Create a new Q (leave out tags, alarms and priority when empty or default):
+              {"type":"create","text":"...","tags":["..."],"alarms":[...],"priority":"high|low"}
 
             Filter/sort the existing list (omit fields not mentioned; {} clears the filter):
               {"type":"filterSort","spec":{"text":<string|null>,"tags":[<string>],"priorities":["high"|"medium"|"low"],
@@ -185,16 +188,33 @@ class LlmPromptBuilder(
             "newest first" -> created_at desc; "oldest first" -> created_at asc; "recently edited" -> updated_at desc;
             "by priority" -> priority asc; "by tag" -> tags asc.
 
-            Create rules: keep the user's language; "text" is the note only (drop "remind me to", "me lembra de"); capitalize the first word.
+            Create rules: keep the user's language; "text" is what to remember, with every detail the user gave (including times of the event itself) except the reminder time and wrapper words like "remind me to" / "me lembra de"; capitalize the first word.
 
             Examples:
               "Cue me at 5pm to pick up Stella"
-              -> {"type":"create","text":"Pick up Stella","tags":[],"alarms":[{"type":"oneOffTime","at":"<resolved>"}],"priority":"medium"}
-              "Every Tuesday at 9:30pm take out the trash"
-              -> {"type":"create","text":"Take out the trash","tags":[],"alarms":[{"type":"recurringTime","rule":"FREQ=WEEKLY;BYDAY=TU","dtStart":"<today at 21:30>","until":null,"count":null}],"priority":"medium"}
+              -> {"type":"create","text":"Pick up Stella","alarms":[{"when":"today","time":"17:00"}]}
+              "In half an hour check the oven"
+              -> {"type":"create","text":"Check the oven","alarms":[{"in":"30m"}]}
+              "Every day at 7am take my medicine"
+              -> {"type":"create","text":"Take my medicine","alarms":[{"every":"day","time":"07:00"}]}
+              "Every Monday, Wednesday and Friday at 5pm take out the trash"
+              -> {"type":"create","text":"Take out the trash","alarms":[{"every":"week","days":["mon","wed","fri"],"time":"17:00"}]}
+              "Every weekday at 9am standup"
+              -> {"type":"create","text":"Standup","alarms":[{"every":"week","days":["weekdays"],"time":"09:00"}]}
+              "Every other Saturday at 10am until March 1st clean the garage"
+              -> {"type":"create","text":"Clean the garage","alarms":[{"every":"week","interval":2,"days":["sat"],"time":"10:00","until":"2027-03-01"}]}
+              "Take vitamins every day at 8am and 8pm"
+              -> {"type":"create","text":"Take vitamins","alarms":[{"every":"hour","interval":12,"time":"20:00"}]}
+              "Pay rent on the 5th of every month"
+              -> {"type":"create","text":"Pay rent","alarms":[{"every":"month","monthDays":[5]}]}
+              "Call mom on the second Sunday of every month at 10am"
+              -> {"type":"create","text":"Call mom","alarms":[{"every":"month","days":["2sun"],"time":"10:00"}]}
+              "Urgent: renew the passport on December 3rd"
+              -> {"type":"create","text":"Renew the passport","alarms":[{"when":"2026-12-03"}],"priority":"high"}
               "show only high priority" -> {"type":"filterSort","spec":{"priorities":["high"]}}
               "what do I have next week" -> {"type":"filterSort","spec":{"alarmWindow":"next_week"}}
-              "clear filters" -> {"type":"filterSort","spec":{}}
+              "amanhã às 7 me lembra da reunião às 10"
+              -> {"type":"create","text":"Reunião às 10","alarms":[{"when":"tomorrow","time":"07:00"}]}
         """.trimIndent()
 
         private val SYSTEM_QUERY = """

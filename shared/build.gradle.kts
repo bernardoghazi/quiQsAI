@@ -49,6 +49,11 @@ kotlin {
     }
 }
 
+tasks.withType<Test>().configureEach {
+    // The text-prompt harness loads a multi-GB model; see TextPromptHarness.
+    maxHeapSize = "4g"
+}
+
 android {
     namespace = "com.quiqs.shared"
     compileSdk = libs.versions.compileSdk.get().toInt()

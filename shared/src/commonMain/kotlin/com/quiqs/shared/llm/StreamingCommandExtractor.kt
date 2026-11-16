@@ -17,8 +17,11 @@ import kotlinx.serialization.json.Json
  * The extractor is forgiving: malformed values (e.g. partial timestamps mid-stream)
  * just don't emit — the post-stream parser still runs and applies its own repair
  * passes. Unknown keys are ignored.
+ *
+ * @param alarmDecoder When set, `alarms` values may use the compact notation and are
+ *   resolved through it; otherwise only the full wire form is understood.
  */
-class StreamingCommandExtractor {
+class StreamingCommandExtractor(private val alarmDecoder: LlmAlarmDecoder? = null) {
 
     private val buffer = StringBuilder()
     private val emitted = mutableSetOf<String>()
@@ -138,7 +141,8 @@ class StreamingCommandExtractor {
             json.decodeFromString(ListSerializer(String.serializer()), rawValue)
         }.getOrNull()?.let(StreamingFieldUpdate::Tags)
         "alarms" -> runCatching {
-            json.decodeFromString(ListSerializer(Alarm.serializer()), rawValue)
+            alarmDecoder?.decodeList(rawValue)
+                ?: json.decodeFromString(ListSerializer(Alarm.serializer()), rawValue)
         }.getOrNull()?.let(StreamingFieldUpdate::Alarms)
         else -> null
     }

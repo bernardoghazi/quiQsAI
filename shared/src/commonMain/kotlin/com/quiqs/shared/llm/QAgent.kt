@@ -24,7 +24,8 @@ class QAgent(
     private val engine: LlmEngine,
     private val repository: QRepository,
     private val promptBuilder: LlmPromptBuilder,
-    private val parser: LlmCommandParser = LlmCommandParser(),
+    private val parser: LlmCommandParser =
+        LlmCommandParser(LlmAlarmDecoder(promptBuilder.clock, promptBuilder.timeZone)),
     private val dispatcher: QCommandDispatcher = QCommandDispatcher(repository),
 ) {
     /**
@@ -137,6 +138,8 @@ class QAgent(
         onFieldUpdate = onFieldUpdate,
     )
 
+    private val alarmDecoder = LlmAlarmDecoder(promptBuilder.clock, promptBuilder.timeZone)
+
     /** Timing of the most recent engine call. See [LlmEngine.lastMetrics]. */
     val lastMetrics: LlmMetrics? get() = engine.lastMetrics
 
@@ -146,7 +149,7 @@ class QAgent(
         onChunk: (String) -> Unit,
         onFieldUpdate: (StreamingFieldUpdate) -> Unit,
     ): QAgentParseOutcome = withContext(Dispatchers.Default) {
-        val extractor = StreamingCommandExtractor()
+        val extractor = StreamingCommandExtractor(alarmDecoder)
         val raw = engine.generate(
             prompt = prompt,
             systemInstruction = promptBuilder.systemForNewOrFilter,
@@ -179,6 +182,7 @@ class QAgent(
         val now = promptBuilder.clock()
         val tz = promptBuilder.timeZone
         return map { if (it is Alarm.RecurringTime) it.snappedToRule(now, tz) else it }
+            .take(MAX_ALARMS_PER_Q)
     }
 
     private fun QCommand.corrected(): QCommand = when (this) {
@@ -235,3 +239,11 @@ sealed interface QAgentOutcome {
     /** The model's output could not be parsed into a [QCommand]. [raw] preserves it for diagnostics. */
     data class ParseFailed(val raw: String, val reason: String) : QAgentOutcome
 }
+
+/**
+ * Alarms kept from one LLM answer. The prompt asks for a single alarm per Q, but small
+ * models sometimes add a second one for a time that belongs in the note ("remind me at 6,
+ * blood test at 9" → alarms at 6 and 9). Only the first alarm is scheduled anyway, so
+ * extras would just be inert chips. Raise this once Qs support several alarms.
+ */
+internal const val MAX_ALARMS_PER_Q = 1
