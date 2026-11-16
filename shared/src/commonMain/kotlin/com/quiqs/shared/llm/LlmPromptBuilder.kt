@@ -126,15 +126,14 @@ class LlmPromptBuilder(
 
         private val ALARMS_AND_TIME_RULES = """
             Alarms (local time, 24h "HH:mm"; the app works out the dates, never compute them yourself):
-              one-off:   (Portuguese "6a feira" = fri, "2a feira" = mon; never invent other words like "this_week") {"when":"today|tomorrow|mon|tue|wed|thu|fri|sat|sun|YYYY-MM-DD","time":"HH:mm"} or {"in":"30m|2h|3d"}
+              one-off:   {"when":"today|tomorrow|mon|tue|wed|thu|fri|sat|sun|YYYY-MM-DD","time":"HH:mm"} or {"in":"30m|2h|3d"}
               recurring: {"every":"minute|hour|day|week|month|year","interval":<int>,"days":["mon","wed"],"monthDays":[1,15],"months":[6],"time":"HH:mm","until":"YYYY-MM-DD","count":<int>}
-            - Use the day words the user said. "time" defaults to 09:00. Omit fields that don't apply.
-            - Exactly ONE alarm per Q. With two times, the alarm is the FIRST time the user says; the second one is the event's own time and stays in "text".
+            - "time" defaults to 09:00. Omit fields that don't apply. "6a feira" = fri, "2a feira" = mon.
+            - Exactly ONE alarm per Q. With two times ("amanhã às 6 ... exame às 9"), the alarm is the FIRST time the user says (06:00); the second one is the event's own time and stays in "text".
             - Never change the hour the user said: "às 8" = 08:00 unless they say tarde/noite/pm; then add 12 to that hour exactly ("7 da noite" = 19:00, "5pm" = 17:00).
             - Several times a day at even spacing ("8am and 8pm") is ONE alarm: {"every":"hour","interval":12,"time":"20:00"}.
-            - "days" also accepts "weekdays" (Mon-Fri) and "weekend". For a date of the month use "monthDays", not "days".
-            - "days" can take an ordinal for monthly/yearly rules: "2sun" = 2nd Sunday, "-1fri" = last Friday.
-            - "until" and "count" are mutually exclusive; neither = repeats forever.
+            - "days" also takes "weekdays", "weekend" and ordinals ("2sun" = 2nd Sunday, "-1fri" = last Friday); dates of the month go in "monthDays".
+            - "until" and "count" are mutually exclusive.
         """.trimIndent()
 
         private val PRIORITY_RULES = """
@@ -172,7 +171,7 @@ class LlmPromptBuilder(
 
             Filter/sort the existing list (omit fields not mentioned; {} clears the filter):
               {"type":"filterSort","spec":{"text":<string|null>,"tags":[<string>],"priorities":["high"|"medium"|"low"],
-               "alarm":"any|none|any_set|recurring|one_off|geofence","alarmWindow":"any|today|tomorrow|this_week|next_week",
+               "alarm":"any|none|any_set|recurring|one_off","alarmWindow":"any|today|tomorrow|this_week|next_week",
                "completed":"any|only_open|only_done","sortBy":"tags|priority|created_at|updated_at|alarm","sortDir":"asc|desc"}}
 
             Intent: create = a NEW task/reminder for the user ("remind me to...", "add a Q to...").
@@ -182,11 +181,8 @@ class LlmPromptBuilder(
 
             $PRIORITY_RULES
 
-            Filter shortcuts: "urgent"/"high priority" -> priorities ["high"]; "done" -> completed only_done; "open"/"todo" -> only_open;
-            "no alarms" -> alarm none; "with alarms" -> any_set; "recurring" -> recurring; "one-off" -> one_off;
-            "today"/"tomorrow"/"this week"/"next week" -> alarmWindow; "upcoming"/"next alarm" -> sortBy alarm asc;
-            "newest first" -> created_at desc; "oldest first" -> created_at asc; "recently edited" -> updated_at desc;
-            "by priority" -> priority asc; "by tag" -> tags asc.
+            Filter shortcuts: "urgent" -> priorities ["high"]; "done"/"open" -> completed only_done/only_open; "no alarms"/"with alarms" -> alarm none/any_set;
+            "upcoming" -> sortBy alarm asc; "newest first" -> created_at desc; "oldest first" -> created_at asc; "recently edited" -> updated_at desc.
 
             Create rules: keep the user's language; "text" is what to remember, with every detail the user gave (including times of the event itself) except the reminder time and wrapper words like "remind me to" / "me lembra de"; capitalize the first word.
 
@@ -195,12 +191,8 @@ class LlmPromptBuilder(
               -> {"type":"create","text":"Pick up Stella","alarms":[{"when":"today","time":"17:00"}]}
               "In half an hour check the oven"
               -> {"type":"create","text":"Check the oven","alarms":[{"in":"30m"}]}
-              "Every day at 7am take my medicine"
-              -> {"type":"create","text":"Take my medicine","alarms":[{"every":"day","time":"07:00"}]}
               "Every Monday, Wednesday and Friday at 5pm take out the trash"
               -> {"type":"create","text":"Take out the trash","alarms":[{"every":"week","days":["mon","wed","fri"],"time":"17:00"}]}
-              "Every weekday at 9am standup"
-              -> {"type":"create","text":"Standup","alarms":[{"every":"week","days":["weekdays"],"time":"09:00"}]}
               "Every other Saturday at 10am until March 1st clean the garage"
               -> {"type":"create","text":"Clean the garage","alarms":[{"every":"week","interval":2,"days":["sat"],"time":"10:00","until":"2027-03-01"}]}
               "Take vitamins every day at 8am and 8pm"
@@ -211,10 +203,7 @@ class LlmPromptBuilder(
               -> {"type":"create","text":"Call mom","alarms":[{"every":"month","days":["2sun"],"time":"10:00"}]}
               "Urgent: renew the passport on December 3rd"
               -> {"type":"create","text":"Renew the passport","alarms":[{"when":"2026-12-03"}],"priority":"high"}
-              "show only high priority" -> {"type":"filterSort","spec":{"priorities":["high"]}}
               "what do I have next week" -> {"type":"filterSort","spec":{"alarmWindow":"next_week"}}
-              "me lembra de ligar pro Zé na 6a feira às 7 da noite"
-              -> {"type":"create","text":"Ligar pro Zé","alarms":[{"when":"fri","time":"19:00"}]}
               "amanhã às 7 me lembra da reunião às 10"
               -> {"type":"create","text":"Reunião às 10","alarms":[{"when":"tomorrow","time":"07:00"}]}
         """.trimIndent()
