@@ -98,6 +98,9 @@ private class AndroidSpeechTranscriber(private val context: Context) : SpeechTra
                 )
             }
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+            // After a pause the recognizer starts a new segment; ask it to keep listening and
+            // report each finished segment so earlier words aren't lost.
+            putExtra(RecognizerIntent.EXTRA_SEGMENTED_SESSION, true)
             putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
             putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE, audio)
             putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE_CHANNEL_COUNT, 1)
@@ -127,11 +130,20 @@ private class AndroidSpeechTranscriber(private val context: Context) : SpeechTra
         private val pcm = Channel<ByteArray>(Channel.UNLIMITED)
         private val result = CompletableDeferred<String>()
 
+        // Finished segments (a pause starts a new one) and the one still being spoken.
+        // Written on the main thread; [snapshot] is the joined text, safe to read anywhere.
+        private val committed = mutableListOf<String>()
+        private var current = ""
+
         @Volatile
-        private var lastPartial = ""
+        private var snapshot = ""
 
         @Volatile
         private var released = false
+
+        private fun refreshSnapshot() {
+            snapshot = (committed + current).filter { it.isNotBlank() }.joinToString(" ")
+        }
 
         private val writer: Job = scope.launch {
             ParcelFileDescriptor.AutoCloseOutputStream(writeEnd).use { out ->
@@ -165,7 +177,7 @@ private class AndroidSpeechTranscriber(private val context: Context) : SpeechTra
                         withContext(Dispatchers.Main) { runCatching { recognizer.stopListening() } }
                         withTimeoutOrNull(FINISH_TIMEOUT_MS - STOP_NUDGE_MS) { result.await() }
                     }
-                    ?: lastPartial.also { Log.w(TAG, "No final result in time; using last partial") }
+                    ?: snapshot.also { Log.w(TAG, "No final result in time; using transcript so far") }
                 return text.trim()
             } finally {
                 release()
@@ -195,18 +207,53 @@ private class AndroidSpeechTranscriber(private val context: Context) : SpeechTra
         override fun onPartialResults(partialResults: Bundle?) {
             val text = partialResults.firstResult() ?: return
             if (text.isBlank()) return
-            lastPartial = text
-            onPartial(text)
+            // Fallback for recognizers that restart their partials after a pause without
+            // sending segment callbacks: a partial that is much shorter than the previous
+            // one and isn't a prefix of it is a new segment, so keep what we had.
+            if (current.isNotBlank() && text.length < current.length / 2 &&
+                !current.startsWith(text, ignoreCase = true)
+            ) {
+                Log.d(TAG, "Partials restarted; keeping \"$current\" as a finished segment")
+                committed += current
+            }
+            current = text
+            refreshSnapshot()
+            onPartial(snapshot)
+        }
+
+        /** A finished segment (the speaker paused). Needs `EXTRA_SEGMENTED_SESSION` support. */
+        override fun onSegmentResults(segmentResults: Bundle) {
+            val text = segmentResults.firstResult()?.takeIf { it.isNotBlank() } ?: current
+            Log.d(TAG, "Segment finished: \"$text\"")
+            if (text.isNotBlank()) committed += text
+            current = ""
+            refreshSnapshot()
+            onPartial(snapshot)
+        }
+
+        override fun onEndOfSegmentedSession() {
+            result.complete(snapshot)
         }
 
         override fun onResults(results: Bundle?) {
-            result.complete(results.firstResult()?.takeIf { it.isNotBlank() } ?: lastPartial)
+            // Non-segmented completion. If the recognizer's final text already contains the
+            // earlier segments, use it alone; otherwise append it to what we kept.
+            val text = results.firstResult()?.takeIf { it.isNotBlank() }
+            val earlier = committed.joinToString(" ")
+            result.complete(
+                when {
+                    text == null -> snapshot
+                    earlier.isEmpty() || text.contains(earlier, ignoreCase = true) -> text
+                    committed.lastOrNull() == text -> earlier
+                    else -> "$earlier $text"
+                },
+            )
         }
 
         override fun onError(error: Int) {
             when (error) {
                 SpeechRecognizer.ERROR_NO_MATCH,
-                SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> result.complete(lastPartial)
+                SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> result.complete(snapshot)
 
                 SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED,
                 SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE -> {
