@@ -54,8 +54,8 @@ private val promptJson = Json {
  * @property timeZone Zone used to format the alarm offsets in the user's locale.
  */
 class LlmPromptBuilder(
-    private val clock: () -> Instant,
-    private val timeZone: TimeZone = TimeZone.currentSystemDefault(),
+    val clock: () -> Instant,
+    val timeZone: TimeZone = TimeZone.currentSystemDefault(),
 ) {
     /** System instruction for the combined "new Q or filter+sort" mode. */
     val systemForNewOrFilter: String get() = SYSTEM_NEW_OR_FILTER
@@ -127,28 +127,15 @@ class LlmPromptBuilder(
         private val ALARMS_AND_TIME_RULES = """
             Alarms:
               {"type":"oneOffTime","at":"<iso8601>"}
-              {"type":"recurringTime","rule":"<RRULE>","dtStart":"<iso8601>","until":"<iso8601|null>","count":<int|null>}
+              {"type":"recurringTime","rule":"<RRULE body>","dtStart":"<iso8601>","until":"<iso8601|null>","count":<int|null>}
               {"type":"geofence","latitude":<num>,"longitude":<num>,"radiusMeters":<num>,"activeUntil":"<iso8601|null>"}
-
-            Rules:
-            - Resolve relative times with the given now+tz.
-            - Emit iso8601 in the given tz as ISO-8601 with offset, not UTC. Example: user says "5pm" with offset 03:00 → "17:00:00-03:00".
-            
-            Recurring alarm rules:
-            - `dtStart` is REQUIRED.
-            - `until` and `count` are mutually exclusive. Both null means recur forever.
-            - The `rule` is the RRULE body only. Do NOT put DTSTART, UNTIL, or COUNT inside it.
-            - Supported RRULE parts: FREQ (MINUTELY|HOURLY|DAILY|WEEKLY|MONTHLY|YEARLY);
-              INTERVAL; BYDAY (MO/TU/WE/TH/FR/SA/SU; for MONTHLY/YEARLY a leading int picks
-              the Nth weekday, e.g. `2SU`=2nd Sunday, `-1FR`=last Friday); BYMONTH;
-              BYMONTHDAY; BYHOUR; BYMINUTE. If BYHOUR/BYMINUTE are omitted, occurrences fire
-              at dtStart's local hour:minute.
+            - Resolve relative times from "Current time". Write iso8601 with the user's offset, never UTC ("5pm" at offset -03:00 -> "17:00:00-03:00").
+            - Recurring: dtStart (first firing) is required; only its time of day matters when the rule has BYDAY/BYMONTHDAY, the app moves the date to the first matching day. rule = RRULE body only, no DTSTART/UNTIL/COUNT. until and count are mutually exclusive; both null = forever.
+              Parts: FREQ (MINUTELY|HOURLY|DAILY|WEEKLY|MONTHLY|YEARLY), INTERVAL, BYDAY (MO..SU; 2SU = 2nd Sunday, -1FR = last Friday), BYMONTH, BYMONTHDAY, BYHOUR, BYMINUTE.
         """.trimIndent()
 
         private val PRIORITY_RULES = """
-            Priority: "high" | "medium" | "low". Default "medium" if the user doesn't signal urgency.
-            - "urgent", "asap", "critical", "important" → "high"
-            - "whenever", "low priority", "no rush" → "low"
+            Priority: "high"|"medium"|"low", default "medium". "urgent/asap/critical/important" -> high; "whenever/no rush/low priority" -> low.
         """.trimIndent()
 
         private val SYSTEM_EDIT = """
@@ -175,98 +162,39 @@ class LlmPromptBuilder(
         private val SYSTEM_NEW_OR_FILTER = """
             $BASE
 
-            Output exactly one of two commands based on user intent.
+            Output one command, chosen by the user's intent.
 
-            To create a new Q:
+            Create a new Q:
               {"type":"create","text":"...","tags":[],"alarms":[],"priority":"medium"}
 
-            To filter/sort the existing Q list:
-              {"type":"filterSort","spec":{
-                "text": <string|null>,
-                "tags": [<string>...],
-                "priorities": [<"high"|"medium"|"low">...],
-                "alarm": <"any"|"none"|"any_set"|"recurring"|"one_off"|"geofence">,
-                "alarmWindow": <"any"|"today"|"tomorrow"|"this_week"|"next_week">,
-                "completed": <"any"|"only_open"|"only_done">,
-                "sortBy": <"tags"|"priority"|"created_at"|"updated_at"|"alarm">,
-                "sortDir": <"asc"|"desc">
-              }}
+            Filter/sort the existing list (omit fields not mentioned; {} clears the filter):
+              {"type":"filterSort","spec":{"text":<string|null>,"tags":[<string>],"priorities":["high"|"medium"|"low"],
+               "alarm":"any|none|any_set|recurring|one_off|geofence","alarmWindow":"any|today|tomorrow|this_week|next_week",
+               "completed":"any|only_open|only_done","sortBy":"tags|priority|created_at|updated_at|alarm","sortDir":"asc|desc"}}
 
-            Intent disambiguation (decide first, then emit):
-            - Create when the user names a NEW task/note/reminder, often with a time, place,
-              or action verb directed at themselves. Cues: "remind me to...", "add/create a Q to...".
-            - FilterSort when the user describes how to slice or order the EXISTING list.
-              Cues: "show", "hide", "filter", "sort by", "newest first", "high priority only".
-            - If ambiguous (e.g. a bare noun phrase like "groceries"), prefer "filterSort" —
-              creating an empty-detail Q is worse than narrowing the list.
+            Intent: create = a NEW task/reminder for the user ("remind me to...", "add a Q to...").
+            filterSort = show/hide/filter/sort/order the EXISTING list. A bare noun phrase ("groceries") -> filterSort.
 
             $ALARMS_AND_TIME_RULES
 
             $PRIORITY_RULES
 
-            FilterSort field meaning:
-            - text: case-insensitive substring matched against Q text.
-            - tags: only Qs whose tags contain at least one (case-insensitive).
-            - priorities: only Qs whose priority is in the list.
-            - alarm: filter by alarm shape (any=no filter, none=no alarms, any_set=has alarms,
-              recurring/one_off/geofence=has that kind).
-            - alarmWindow: keep only Qs whose next alarm fires within a relative window —
-              today/tomorrow/this_week/next_week. Stored as a token, re-resolved against
-              the current day on every evaluation, so the result stays "always right".
-              Weeks start Sunday. any=no window filter.
-            - completed: only_open hides done Qs; only_done shows only done Qs; any=both.
-            FilterSort defaults: text=null, tags=[], priorities=[], alarm="any",
-            alarmWindow="any", completed="only_open", sortBy="created_at", sortDir="desc".
-            Omit fields the user did not mention. Empty spec {} clears any active filter.
+            Filter shortcuts: "urgent"/"high priority" -> priorities ["high"]; "done" -> completed only_done; "open"/"todo" -> only_open;
+            "no alarms" -> alarm none; "with alarms" -> any_set; "recurring" -> recurring; "one-off" -> one_off;
+            "today"/"tomorrow"/"this week"/"next week" -> alarmWindow; "upcoming"/"next alarm" -> sortBy alarm asc;
+            "newest first" -> created_at desc; "oldest first" -> created_at asc; "recently edited" -> updated_at desc;
+            "by priority" -> priority asc; "by tag" -> tags asc.
 
-            FilterSort mapping shortcuts:
-            - "high priority" / "urgent" → priorities=["high"]
-            - "completed" / "done" → completed="only_done"; "open"/"todo" → "only_open"
-            - "no alarms" → alarm="none"; "with alarms" → alarm="any_set"
-            - "recurring" → alarm="recurring"; "one-off" → alarm="one_off"
-            - "today" / "today's Qs" / "due today" → alarmWindow="today"
-            - "tomorrow" / "tomorrow's Qs" → alarmWindow="tomorrow"
-            - "this week" → alarmWindow="this_week"
-            - "next week" → alarmWindow="next_week"
-            - "next alarm" / "upcoming" / "soonest" → sortBy="alarm", sortDir="asc"
-            - "newest first" → sortBy="created_at", sortDir="desc"
-            - "oldest first" → sortBy="created_at", sortDir="asc"
-            - "recently edited" → sortBy="updated_at", sortDir="desc"
-            - "by priority" → sortBy="priority", sortDir="asc" (high first)
-            - "by tag" / "group by tag" → sortBy="tags", sortDir="asc"
-            - "clear" / "reset filters" → emit empty spec {}
-
-            Create content rules:
-            - Do not translate the user's language in "text".
-            - "text" is the note content only; strip wrappers like "remind me to", "cue me to",
-              "me lembra de".
-            - Capitalize the first word.
+            Create rules: keep the user's language; "text" is the note only (drop "remind me to", "me lembra de"); capitalize the first word.
 
             Examples:
               "Cue me at 5pm to pick up Stella"
-              → {"type":"create","text":"Pick up Stella","tags":[],"alarms":[{"type":"oneOffTime","at":"<resolved>"}],"priority":"medium"}
-
-              "Urgent: call the doctor"
-              → {"type":"create","text":"Call the doctor","tags":[],"alarms":[],"priority":"high"}
-              → {"type":"create","text":"Call the doctor","tags":[],"alarms":[],"priority":"high"}
-
-              "show only high priority"
-              → {"type":"filterSort","spec":{"priorities":["high"]}}
-
-              "sort by next alarm"
-              → {"type":"filterSort","spec":{"sortBy":"alarm","sortDir":"asc"}}
-
-              "hide done tasks"
-              → {"type":"filterSort","spec":{"completed":"only_open"}}
-
-              "show me today's Qs"
-              → {"type":"filterSort","spec":{"alarmWindow":"today"}}
-
-              "what do I have next week"
-              → {"type":"filterSort","spec":{"alarmWindow":"next_week"}}
-
-              "clear filters"
-              → {"type":"filterSort","spec":{}}
+              -> {"type":"create","text":"Pick up Stella","tags":[],"alarms":[{"type":"oneOffTime","at":"<resolved>"}],"priority":"medium"}
+              "Every Tuesday at 9:30pm take out the trash"
+              -> {"type":"create","text":"Take out the trash","tags":[],"alarms":[{"type":"recurringTime","rule":"FREQ=WEEKLY;BYDAY=TU","dtStart":"<today at 21:30>","until":null,"count":null}],"priority":"medium"}
+              "show only high priority" -> {"type":"filterSort","spec":{"priorities":["high"]}}
+              "what do I have next week" -> {"type":"filterSort","spec":{"alarmWindow":"next_week"}}
+              "clear filters" -> {"type":"filterSort","spec":{}}
         """.trimIndent()
 
         private val SYSTEM_QUERY = """

@@ -37,6 +37,9 @@ kotlin {
             implementation(libs.kotlinx.datetime)
             implementation(libs.sqldelight.coroutines.extensions)
         }
+        commonTest.dependencies {
+            implementation(kotlin("test"))
+        }
         androidMain.dependencies {
             implementation(libs.litertlm.android)
         }

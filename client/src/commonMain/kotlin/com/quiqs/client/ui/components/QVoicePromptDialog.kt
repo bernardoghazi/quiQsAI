@@ -28,10 +28,16 @@ import androidx.compose.ui.unit.dp
 sealed interface VoicePromptState {
     /** No dialog showing. */
     data object Idle : VoicePromptState
-    /** User is holding the FAB and audio is being captured. */
-    data object Recording : VoicePromptState
-    /** Recorder stopped; LLM is streaming its response. [streaming] accumulates chunks. */
-    data class Processing(val streaming: String) : VoicePromptState
+    /**
+     * User is holding the FAB and audio is being captured. [transcript] is the live
+     * speech-to-text partial (empty when the audio goes straight to the LLM).
+     */
+    data class Recording(val transcript: String = "") : VoicePromptState
+    /**
+     * Recorder stopped; LLM is streaming its response. [streaming] accumulates chunks;
+     * [transcript] is the final speech-to-text result sent to the LLM, if any.
+     */
+    data class Processing(val streaming: String, val transcript: String = "") : VoicePromptState
     /** LLM finished. [message] is the dispatcher's success message. */
     data class Done(val message: String) : VoicePromptState
     /** Something failed (recorder, parser, agent). */
@@ -63,7 +69,7 @@ fun QVoicePromptDialog(
         title = {
             Text(
                 when (state) {
-                    VoicePromptState.Recording -> "Listening…"
+                    is VoicePromptState.Recording -> "Listening…"
                     is VoicePromptState.Processing -> "Thinking…"
                     is VoicePromptState.Done -> "Done"
                     is VoicePromptState.Error -> "Something went wrong"
@@ -77,8 +83,12 @@ fun QVoicePromptDialog(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 when (state) {
-                    VoicePromptState.Recording -> Spinner()
+                    is VoicePromptState.Recording -> {
+                        if (state.transcript.isNotEmpty()) Text("“${state.transcript}”")
+                        Spinner()
+                    }
                     is VoicePromptState.Processing -> {
+                        if (state.transcript.isNotEmpty()) Text("“${state.transcript}”")
                         if (state.streaming.isEmpty()) Spinner()
                         else Text(
                             text = state.streaming,

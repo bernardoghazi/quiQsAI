@@ -2,7 +2,9 @@
 
 package com.quiqs.shared.llm
 
+import com.quiqs.shared.Alarm
 import com.quiqs.shared.QRepository
+import com.quiqs.shared.snappedToRule
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.uuid.ExperimentalUuidApi
@@ -112,22 +114,53 @@ class QAgent(
         audioPath: String,
         onChunk: (String) -> Unit = {},
         onFieldUpdate: (StreamingFieldUpdate) -> Unit = {},
+    ): QAgentParseOutcome = parseStreaming(
+        prompt = promptBuilder.buildPromptAudio(),
+        audioPath = audioPath,
+        onChunk = onChunk,
+        onFieldUpdate = onFieldUpdate,
+    )
+
+    /**
+     * Text variant of [newOrFilterFromVoiceStreaming], used when the voice prompt has
+     * already been turned into text by a separate speech-to-text step. Same streaming
+     * and no-dispatch contract.
+     */
+    suspend fun newOrFilterFromTextStreaming(
+        prompt: String,
+        onChunk: (String) -> Unit = {},
+        onFieldUpdate: (StreamingFieldUpdate) -> Unit = {},
+    ): QAgentParseOutcome = parseStreaming(
+        prompt = promptBuilder.buildPromptText(prompt),
+        audioPath = null,
+        onChunk = onChunk,
+        onFieldUpdate = onFieldUpdate,
+    )
+
+    /** Timing of the most recent engine call. See [LlmEngine.lastMetrics]. */
+    val lastMetrics: LlmMetrics? get() = engine.lastMetrics
+
+    private suspend fun parseStreaming(
+        prompt: String,
+        audioPath: String?,
+        onChunk: (String) -> Unit,
+        onFieldUpdate: (StreamingFieldUpdate) -> Unit,
     ): QAgentParseOutcome = withContext(Dispatchers.Default) {
         val extractor = StreamingCommandExtractor()
         val raw = engine.generate(
-            prompt = promptBuilder.buildPromptAudio(),
+            prompt = prompt,
             systemInstruction = promptBuilder.systemForNewOrFilter,
             audioPath = audioPath,
             tools = emptyList(),
             onChunk = { piece ->
-                extractor.accept(piece, onFieldUpdate)
+                extractor.accept(piece) { update -> onFieldUpdate(update.corrected()) }
                 onChunk(piece)
             },
         )
         val command = parser.parse(raw).getOrElse { err ->
             return@withContext QAgentParseOutcome.ParseFailed(raw, err.message ?: "parse error")
         }
-        QAgentParseOutcome.Parsed(command, raw)
+        QAgentParseOutcome.Parsed(command.corrected(), raw)
     }
 
     /**
@@ -136,6 +169,28 @@ class QAgent(
      * whether to dispatch at all.
      */
     suspend fun dispatch(command: QCommand): QCommandResult = dispatcher.dispatch(command)
+
+    /**
+     * Fixes recurring alarms the model got wrong on the calendar (see
+     * [snappedToRule]). Applied only to LLM output — alarms the user builds by hand
+     * keep exactly the dates they picked.
+     */
+    private fun List<Alarm>.corrected(): List<Alarm> {
+        val now = promptBuilder.clock()
+        val tz = promptBuilder.timeZone
+        return map { if (it is Alarm.RecurringTime) it.snappedToRule(now, tz) else it }
+    }
+
+    private fun QCommand.corrected(): QCommand = when (this) {
+        is QCommand.Create -> copy(alarms = alarms.corrected())
+        is QCommand.Update -> copy(alarms = alarms?.corrected())
+        else -> this
+    }
+
+    private fun StreamingFieldUpdate.corrected(): StreamingFieldUpdate = when (this) {
+        is StreamingFieldUpdate.Alarms -> StreamingFieldUpdate.Alarms(value.corrected())
+        else -> this
+    }
 
     /**
      * Drives one end-to-end LLM turn off the main thread. Runs inference, parses the
@@ -159,7 +214,7 @@ class QAgent(
             )
             val command = parser.parse(raw).getOrElse { err ->
                 return@withContext QAgentOutcome.ParseFailed(raw, err.message ?: "parse error")
-            }
+            }.corrected()
             val result = dispatcher.dispatch(command)
             QAgentOutcome.Handled(command, result, raw)
         }

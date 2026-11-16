@@ -31,6 +31,12 @@ interface LlmEngine {
         onChunk: (String) -> Unit = {},
     ): String
 
+    /**
+     * Timing of the most recent [generate] call, or `null` if the implementation doesn't
+     * measure it (or nothing has run yet).
+     */
+    val lastMetrics: LlmMetrics? get() = null
+
     /** Release model weights and backing buffers. Engines are unusable after this call. */
     fun close()
 }

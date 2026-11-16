@@ -8,8 +8,14 @@ package com.quiqs.client.audio
  * [cancel] aborts and deletes the partial recording.
  */
 interface AudioRecorder {
-    /** Begin recording. Fails if already recording. */
-    suspend fun start()
+    /**
+     * Begin recording. Fails if already recording.
+     *
+     * @param onPcm Optional tap that receives every captured PCM chunk (16 kHz mono
+     *   16-bit LE) as it is written, e.g. to feed a [TranscriptionSession]. Called on the
+     *   recorder's background thread; the array is a fresh copy the callee may keep.
+     */
+    suspend fun start(onPcm: ((ByteArray, Int) -> Unit)? = null)
 
     /** Finalise the recording and return the absolute path of the produced audio file. */
     suspend fun stop(): String

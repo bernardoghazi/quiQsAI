@@ -12,6 +12,15 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.RadioButton
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -41,6 +50,10 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.quiqs.client.AgentProvider
 import com.quiqs.client.audio.PlayerProvider
 import com.quiqs.client.audio.RecorderProvider
+import com.quiqs.client.audio.NoTranscriber
+import com.quiqs.client.audio.TranscriberProvider
+import com.quiqs.client.audio.SpeechLanguage
+import com.quiqs.client.audio.VoicePipeline
 import com.quiqs.shared.Alarm
 import com.quiqs.client.ui.components.QBottomBar
 import com.quiqs.client.ui.components.QCard
@@ -96,6 +109,7 @@ fun QListScreen(
     agentProvider: AgentProvider,
     recorderProvider: RecorderProvider,
     playerProvider: PlayerProvider,
+    transcriberProvider: TranscriberProvider = NoTranscriber,
     onQueryQs: () -> Unit,
     onFilterSortApplied: (QFilterSort) -> Unit,
     onClearFilterSort: () -> Unit,
@@ -106,7 +120,11 @@ fun QListScreen(
     val qs = remember(all, filterSort) { filterSort.applyTo(all) }
     val scope = rememberCoroutineScope()
 
-    val vm: QListViewModel = viewModel { QListViewModel(agentProvider, recorderProvider, repository) }
+    val vm: QListViewModel = viewModel { QListViewModel(agentProvider, recorderProvider, repository, transcriberProvider) }
+    val voicePipeline by vm.voicePipeline.collectAsState()
+    val lastTiming by vm.lastTiming.collectAsState()
+    val speechLanguage by vm.speechLanguage.collectAsState()
+    var debugDialogOpen by remember { mutableStateOf(false) }
     val voiceState by vm.voiceState.collectAsState()
     val streamingDraft by vm.streamingDraft.collectAsState()
     val streamingActive by vm.streamingActive.collectAsState()
@@ -300,7 +318,7 @@ fun QListScreen(
                         },
                     )
                 },
-                onOverflow = {},
+                onOverflow = { debugDialogOpen = true },
 //                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
             )
         },
@@ -469,6 +487,46 @@ fun QListScreen(
             availableTags = availableTags,
             streamingDraft = if (request.fromVoiceStream) streamingDraft else null,
             streaming = request.fromVoiceStream && streamingActive,
+        )
+    }
+
+    if (debugDialogOpen) {
+        AlertDialog(
+            onDismissRequest = { debugDialogOpen = false },
+            title = { Text("Voice pipeline") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    VoicePipeline.entries.forEach { option ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth().clickable { vm.setVoicePipeline(option) },
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(selected = voicePipeline == option, onClick = { vm.setVoicePipeline(option) })
+                            Text(option.label)
+                        }
+                    }
+                    if (voicePipeline == VoicePipeline.SpeechToText) {
+                        Text("Speech language", style = MaterialTheme.typography.labelLarge)
+                        SpeechLanguage.entries.forEach { option ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth().clickable { vm.setSpeechLanguage(option) },
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                RadioButton(selected = speechLanguage == option, onClick = { vm.setSpeechLanguage(option) })
+                                Text(option.label)
+                            }
+                        }
+                    }
+                    Text("Last voice prompt", style = MaterialTheme.typography.labelLarge)
+                    Text(
+                        lastTiming ?: "No voice prompt yet.",
+                        fontFamily = FontFamily.Monospace,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.heightIn(max = 240.dp).verticalScroll(rememberScrollState()),
+                    )
+                }
+            },
+            confirmButton = { TextButton(onClick = { debugDialogOpen = false }) { Text("OK") } },
         )
     }
 

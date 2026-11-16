@@ -14,6 +14,7 @@ import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 import com.quiqs.client.audio.createPlayerProvider
 import com.quiqs.client.audio.createRecorderProvider
+import com.quiqs.client.audio.createTranscriberProvider
 import kotlinx.coroutines.CompletableDeferred
 
 /**
@@ -77,11 +78,13 @@ class MainActivity : ComponentActivity() {
             },
         )
         val playerProvider = createPlayerProvider(context = applicationContext)
+        val transcriberProvider = createTranscriberProvider(applicationContext)
         setContent {
             App(
                 repository = repository,
                 agentProvider = agentProvider,
                 recorderProvider = recorderProvider,
+                transcriberProvider = transcriberProvider,
                 playerProvider = playerProvider,
                 initialOpenQId = deepLinkQId,
                 onInitialOpenQIdConsumed = { deepLinkQId = null },

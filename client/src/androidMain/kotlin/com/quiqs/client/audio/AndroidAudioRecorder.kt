@@ -74,7 +74,7 @@ private class AndroidAudioRecorder(private val context: Context) : AudioRecorder
     private var outputFile: File? = null
 
     @SuppressLint("MissingPermission")
-    override suspend fun start() = mutex.withLock {
+    override suspend fun start(onPcm: ((ByteArray, Int) -> Unit)?) = mutex.withLock {
         check(recorder == null) { "Recorder already started" }
         val minBuffer = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT)
         val bufferSize = maxOf(minBuffer, SAMPLE_RATE * 2)
@@ -92,7 +92,7 @@ private class AndroidAudioRecorder(private val context: Context) : AudioRecorder
         outputFile = file
         rec.startRecording()
         job = scope.launch {
-            writePcmToWav(rec, file, bufferSize)
+            writePcmToWav(rec, file, bufferSize, onPcm)
         }
     }
 
@@ -125,7 +125,12 @@ private class AndroidAudioRecorder(private val context: Context) : AudioRecorder
      * placeholder WAV header first so the file is a valid structure even if the
      * process dies mid-recording; [patchWavHeader] fills in the real sizes at stop.
      */
-    private suspend fun writePcmToWav(rec: AudioRecord, file: File, bufferSize: Int) {
+    private suspend fun writePcmToWav(
+        rec: AudioRecord,
+        file: File,
+        bufferSize: Int,
+        onPcm: ((ByteArray, Int) -> Unit)?,
+    ) {
         withContext(Dispatchers.IO) {
             FileOutputStream(file).use { fos ->
                 val out = DataOutputStream(fos)
@@ -133,8 +138,12 @@ private class AndroidAudioRecorder(private val context: Context) : AudioRecorder
                 val buffer = ByteArray(bufferSize)
                 while (isActive) {
                     val read = rec.read(buffer, 0, buffer.size)
-                    if (read > 0) out.write(buffer, 0, read)
-                    else if (read < 0) break
+                    if (read > 0) {
+                        out.write(buffer, 0, read)
+                        onPcm?.invoke(buffer.copyOf(read), read)
+                    } else if (read < 0) {
+                        break
+                    }
                 }
                 out.flush()
             }

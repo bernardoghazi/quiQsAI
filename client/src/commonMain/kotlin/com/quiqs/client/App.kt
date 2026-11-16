@@ -23,6 +23,8 @@ import com.quiqs.client.audio.NoPlayer
 import com.quiqs.client.audio.NoRecorder
 import com.quiqs.client.audio.PlayerProvider
 import com.quiqs.client.audio.RecorderProvider
+import com.quiqs.client.audio.NoTranscriber
+import com.quiqs.client.audio.TranscriberProvider
 import com.quiqs.client.ui.QDetailScreen
 import com.quiqs.client.ui.QListScreen
 import com.quiqs.client.ui.QPromptScreen
@@ -43,6 +45,7 @@ fun App(
     repository: QRepository,
     agentProvider: AgentProvider = NoAgent,
     recorderProvider: RecorderProvider = NoRecorder,
+    transcriberProvider: TranscriberProvider = NoTranscriber,
     playerProvider: PlayerProvider = NoPlayer,
     initialOpenQId: String? = null,
     onInitialOpenQIdConsumed: () -> Unit = {},
@@ -67,6 +70,7 @@ fun App(
                     filterSort = filterSort,
                     agentProvider = agentProvider,
                     recorderProvider = recorderProvider,
+                    transcriberProvider = transcriberProvider,
                     playerProvider = playerProvider,
                     initialOpenQId = initialOpenQId,
                     onInitialOpenQIdConsumed = onInitialOpenQIdConsumed,

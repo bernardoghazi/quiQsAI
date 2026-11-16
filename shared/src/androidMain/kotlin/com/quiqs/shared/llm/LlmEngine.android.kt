@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalApi::class)
+
 package com.quiqs.shared.llm
 
 import com.google.ai.edge.litertlm.Backend
@@ -6,6 +8,8 @@ import com.google.ai.edge.litertlm.Contents
 import com.google.ai.edge.litertlm.ConversationConfig
 import com.google.ai.edge.litertlm.Engine
 import com.google.ai.edge.litertlm.EngineConfig
+import com.google.ai.edge.litertlm.ExperimentalApi
+import com.google.ai.edge.litertlm.ExperimentalFlags
 import com.google.ai.edge.litertlm.OpenApiTool
 import com.google.ai.edge.litertlm.SamplerConfig
 import com.google.ai.edge.litertlm.tool
@@ -14,6 +18,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import kotlin.time.TimeSource
 
 private val toolDescriptionJson = Json { encodeDefaults = true }
 
@@ -29,6 +34,10 @@ private val toolDescriptionJson = Json { encodeDefaults = true }
  */
 private class LiteRtLmEngine(modelPath: String, cacheDir: String?) : LlmEngine {
 
+    @Volatile
+    override var lastMetrics: LlmMetrics? = null
+        private set
+
     private val engine: Engine = Engine(
         EngineConfig(
             modelPath = modelPath,
@@ -37,7 +46,12 @@ private class LiteRtLmEngine(modelPath: String, cacheDir: String?) : LlmEngine {
             maxNumTokens = 4096,
             cacheDir = cacheDir,
         ),
-    ).also { it.initialize() }
+    ).also {
+        // Turns on the runtime's per-conversation prefill/decode counters read in
+        // [generate]. Must be set before the conversation is created.
+        ExperimentalFlags.enableBenchmark = true
+        it.initialize()
+    }
 
     override suspend fun generate(
         prompt: String,
@@ -59,6 +73,9 @@ private class LiteRtLmEngine(modelPath: String, cacheDir: String?) : LlmEngine {
             }
             val buffer = StringBuilder()
             val tracker = JsonBalanceTracker()
+            val start = TimeSource.Monotonic.markNow()
+            var ttftMs = -1L
+            var chunks = 0
             // Stop collecting as soon as the top-level JSON object closes — trailing
             // model commentary is wasted decode and delays user-visible results.
             conversation.sendMessageAsync(contents).transformWhile { chunk ->
@@ -66,9 +83,25 @@ private class LiteRtLmEngine(modelPath: String, cacheDir: String?) : LlmEngine {
                     emit(piece)
                     !tracker.consume(piece)
                 }.collect {
+                    if (ttftMs < 0) ttftMs = start.elapsedNow().inWholeMilliseconds
+                    chunks++
                     buffer.append(it)
                     onChunk(it)
                 }
+            val totalMs = start.elapsedNow().inWholeMilliseconds
+            val bench = runCatching { conversation.getBenchmarkInfo() }.getOrNull()
+            lastMetrics = LlmMetrics(
+                hadAudio = audioPath != null,
+                systemChars = systemInstruction?.length ?: 0,
+                promptChars = prompt.length,
+                wallTtftMs = ttftMs.coerceAtLeast(0),
+                wallTotalMs = totalMs,
+                chunks = chunks,
+                prefillTokens = bench?.lastPrefillTokenCount,
+                prefillTokensPerSec = bench?.lastPrefillTokensPerSecond,
+                decodeTokens = bench?.lastDecodeTokenCount,
+                decodeTokensPerSec = bench?.lastDecodeTokensPerSecond,
+            )
             buffer.toString()
         }
     }

@@ -100,6 +100,45 @@ fun occurrencesOf(
     return out
 }
 
+/**
+ * Moves [Alarm.RecurringTime.dtStart] onto the first day that really matches the rule's
+ * BYDAY / BYMONTHDAY / BYMONTH constraints, keeping the time of day it already has.
+ *
+ * LLMs are unreliable at calendar math: asked for "every Wednesday at 5pm" on a Monday
+ * they can emit a `dtStart` that falls on a Tuesday or Thursday. Because `dtStart` is the
+ * rule's anchor, a Thursday start silently skips the coming Wednesday. This corrects that
+ * in code, so the model only has to get the rule and the time of day right.
+ *
+ * Search starts from today in [tz], unless the model's date is more than a week away —
+ * then it's taken as a deliberate "starting later" and the search starts there. The
+ * result is the first matching day whose firing is after [now].
+ *
+ * Returns the alarm unchanged when there's nothing to snap (no BYDAY / BYMONTHDAY /
+ * BYMONTH, or a sub-day frequency), the rule can't be parsed, no match is found within
+ * the search horizon, or the match would fall after [Alarm.RecurringTime.until].
+ */
+fun Alarm.RecurringTime.snappedToRule(now: Instant, tz: TimeZone): Alarm.RecurringTime {
+    val parts = parseRule(rule) ?: return this
+    val freq = parts.freq ?: return this
+    if (freq == Freq.MINUTELY || freq == Freq.HOURLY) return this
+    if (parts.byDay.isEmpty() && parts.byMonthDay.isEmpty() && parts.byMonth.isEmpty()) return this
+
+    val today = now.toLocalDateTime(tz).date
+    val given = dtStart.toLocalDateTime(tz)
+    var date = if (given.date > today.plus(7, DateTimeUnit.DAY)) given.date else today
+    repeat(SEARCH_HORIZON_DAYS) {
+        if (date.matchesConstraints(freq, parts)) {
+            val candidate = date.atTime(given.hour, given.minute).toInstant(tz)
+            if (candidate > now) {
+                if (until != null && candidate > until) return this
+                return copy(dtStart = candidate)
+            }
+        }
+        date = date.plus(1, DateTimeUnit.DAY)
+    }
+    return this
+}
+
 private const val SEARCH_HORIZON_DAYS = 366
 
 private enum class Freq { MINUTELY, HOURLY, DAILY, WEEKLY, MONTHLY, YEARLY }
@@ -175,6 +214,14 @@ private fun LocalDate.matchesCalendar(
     }
     if (!onCycle) return false
 
+    if (parts.byMonth.isNotEmpty() && month.number !in parts.byMonth) return false
+    if (parts.byMonthDay.isNotEmpty() && day !in parts.byMonthDay) return false
+    if (parts.byDay.isNotEmpty() && parts.byDay.none { it.matches(this, freq) }) return false
+    return true
+}
+
+/** BYMONTH / BYMONTHDAY / BYDAY only — ignores INTERVAL, which depends on the anchor. */
+private fun LocalDate.matchesConstraints(freq: Freq, parts: RuleParts): Boolean {
     if (parts.byMonth.isNotEmpty() && month.number !in parts.byMonth) return false
     if (parts.byMonthDay.isNotEmpty() && day !in parts.byMonthDay) return false
     if (parts.byDay.isNotEmpty() && parts.byDay.none { it.matches(this, freq) }) return false
